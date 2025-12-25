@@ -188,80 +188,7 @@ if (currentClose > maxHigh && currentVol > (avgVol * params.volumeMult) && isAbo
 return null;
     `
   },
-  {
-    id: 'macd-pro',
-    name: 'MACD Pro (Zero Line + Impulse)',
-    description: 'Advanced MACD strategy. Buys crossovers near the Zero Line with expanding momentum (Impulse) and strong ADX trend.',
-    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, minAdx: 25 },
-    code: `
-// MACD "Pro" Strategy (Zero Line + Impulse + ADX)
-const { macdLine, signalLine, histogram } = indicators.macd(data, params.fast, params.slow, params.signal);
-const trendSMA = indicators.sma(data, params.trendSma);
-const adx = indicators.adx(data, 14);
-const chandelier = indicators.chandelierExit(data, 22, 3.0);
 
-const i = data.length - 1;
-const currMacd = macdLine[i];
-const currSig = signalLine[i];
-const prevMacd = macdLine[i-1];
-const prevSig = signalLine[i-1];
-const currHist = histogram[i];
-const prevHist = histogram[i-1];
-
-const currentClose = data[i].close;
-const currentTrend = trendSMA[trendSMA.length - 1];
-const currentAdx = adx[adx.length - 1];
-
-// 1. Bullish Crossover
-const isCrossover = prevMacd < prevSig && currMacd > currSig;
-
-// --- IMPROVEMENT 1: Zero Line Vicinity ---
-// We prefer crosses that happen below 0 (reversal) or just slightly above 0 (continuation).
-// We avoid crosses that are too high (overextended).
-const isNotOverextended = currMacd < (currentClose * 0.02); // Loose safety check
-
-// --- IMPROVEMENT 2: Histogram Expansion (Impulse) ---
-// We want the histogram to be growing green. This shows buyers are stepping on the gas.
-const isImpulse = currHist > prevHist && currHist > 0;
-
-// 3. Trend Filter & Chop Filter
-const isUptrend = currentClose > currentTrend;
-const isTrending = currentAdx > params.minAdx; // Raised to 25 for stronger confirmation
-
-// 4. Volume Confirmation (Standard requirement for swing)
-const recentVols = data.slice(-21, -1).map(c => c.volume);
-const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
-const isVolume = data[i].volume > avgVol; 
-
-if (isCrossover && isUptrend && isTrending && isNotOverextended && isImpulse && isVolume) {
-  
-  // Stop Loss: Chandelier Exit (Dynamic Trailing Stop)
-  let stopLoss = chandelier[i];
-  const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
-  
-  if (!isValidChandelier) {
-     const { supports } = indicators.findSupportResistance(data, 20);
-     const nearestSupport = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
-     stopLoss = nearestSupport || currentClose * 0.95;
-  }
-  
-  // Safety: Prevent SL above price
-  if (stopLoss >= currentClose) stopLoss = currentClose * 0.95;
-
-  // Target
-  const risk = currentClose - stopLoss;
-  let target = currentClose + (risk * 3);
-
-  return {
-    signal: 'BUY',
-    stopLoss: stopLoss,
-    target: target,
-    reason: \`MACD Pro: Zero-Zone Cross + Impulse + ADX(\${currentAdx.toFixed(0)}) > 25\`
-  };
-}
-return null;
-    `
-  },
   {
     id: 'macd-standard',
     name: 'MACD (Standard)',
@@ -323,6 +250,7 @@ if (isCrossover && isUptrend && isHealthy && isTrending) {
 return null;
     `
   },
+
   {
     id: 'bb-squeeze',
     name: 'Bollinger Band Squeeze',
@@ -532,56 +460,82 @@ if (isGapUp && isGreen) {
 return null;
     `
   },
+
   {
     id: 'ttm-squeeze',
-    name: 'TTM Squeeze (Volatility Breakout)',
-    description: 'Identifies periods of low volatility (Squeeze) followed by an explosive move. Uses Chandelier Exit for stops.',
+    name: 'TTM Squeeze (Optimized)',
+    description: 'Trend-aligned TTM Squeeze. Requires price > SMA 50 and active volume. Uses tighter structure-based stops.',
     parameters: { defaultRiskPct: 0.05 },
     code: `
-// TTM Squeeze Strategy
+// TTM Squeeze Optimized (Trend Aligned + Vol)
 const { squeezeOn, histogram } = indicators.ttmSqueeze(data);
 const chandelier = indicators.chandelierExit(data, 22, 3.0);
+const sma50 = indicators.sma(data, 50); // Trend Filter
 
 const i = data.length - 1;
+
+// Indicators
 const currentSqueeze = squeezeOn[i];
 const prevSqueeze = squeezeOn[i-1];
 const prev2Squeeze = squeezeOn[i-2];
-
 const currentHist = histogram[i];
 const prevHist = histogram[i-1];
+const currentClose = data[i].close;
+const currentTrend = sma50[sma50.length - 1];
 
-// 1. Setup: Was there a squeeze recently? (Red Dot)
-// We check if we were in a squeeze in the last few bars but NOW we are firing
+// 1. Setup: Was there a squeeze recently?
 const wasSqueeze = prevSqueeze || prev2Squeeze;
 
-// 2. Trigger: Squeeze Fired (Green Dot) - No longer in squeeze
+// 2. Trigger: Squeeze Fired (Transition from ON to OFF)
 const squeezeFired = !currentSqueeze && wasSqueeze;
 
 // 3. Momentum: Histogram is Positive and Rising (Cyan bars)
+// This confirms the explosion is to the UPSIDE
 const isBullishMomentum = currentHist > 0 && currentHist > prevHist;
 
-if (squeezeFired && isBullishMomentum) {
-  const currentClose = data[i].close;
-  
-  // Stop Loss: Chandelier Exit
-  let stopLoss = chandelier[i];
-  
-  // Fallback if Chandelier is NaN or too far
-  if (!stopLoss || isNaN(stopLoss) || (currentClose - stopLoss) / currentClose > 0.15) {
-     const { supports } = indicators.findSupportResistance(data, 10);
-     stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT') || currentClose * 0.95;
-  }
+// --- IMPROVEMENT 1: Trend Filter ---
+// Never buy a squeeze in a downtrend. 
+// Price must be above the 50 SMA.
+const isUptrend = currentClose > currentTrend;
 
-  // Target: VWAP + 2 StdDev (Approximated as BB Upper + buffer)
-  // Or simply 2x Risk
+// --- IMPROVEMENT 2: Volume Check ---
+// We don't need massive volume, but we need "alive" volume.
+// Avoid days where volume is < 75% of average.
+const recentVols = data.slice(-21, -1).map(c => c.volume);
+const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
+const isVolumeAlive = data[i].volume > (avgVol * 0.75);
+
+if (squeezeFired && isBullishMomentum && isUptrend && isVolumeAlive) {
+  
+  // Stop Loss Logic:
+  // Option A: Chandelier Exit (Trailing)
+  let stopA = chandelier[i];
+  
+  // Option B: Low of the Firing Candle (Structure)
+  // If the breakout is real, price shouldn't fall back below today's low.
+  let stopB = data[i].low;
+
+  // Validation: Filter out invalid Chandelier values
+  if (!stopA || isNaN(stopA) || stopA > currentClose) stopA = 0;
+
+  // PICK THE TIGHTER STOP (Higher Price) to reduce risk
+  // But ensure it's not TOO close (noise). 
+  let stopLoss = Math.max(stopA, stopB);
+  
+  // Fallback: If stops are too close (< 1%), give it breathing room (3%)
+  if ((currentClose - stopLoss) / currentClose < 0.01) {
+      stopLoss = currentClose * 0.97;
+  }
+  
+  // Target: Aggressive 3R (Squeezes move fast)
   const risk = currentClose - stopLoss;
-  let target = currentClose + (risk * 2.5); // Explosive moves target higher RR
+  let target = currentClose + (risk * 3);
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`TTM Squeeze Fired + Bullish Momentum. SL: Chandelier Exit\`
+    reason: \`TTM Squeeze Fired + Trend (Above SMA50). Vol: \${(data[i].volume/avgVol).toFixed(2)}x\`
   };
 }
 return null;
