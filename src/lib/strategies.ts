@@ -3,48 +3,79 @@ import { Strategy } from './types';
 export const PREBUILT_STRATEGIES: Strategy[] = [
   {
     id: 'golden-cross',
-    name: 'Golden Cross (Smart S/R)',
-    description: 'Buys when SMA 50 > SMA 200. Uses recent Swing Low for Stop Loss and Swing High for Target.',
+    name: 'Golden Cross (Optimized)',
+    description: 'Buys when SMA 50 > SMA 200 with RSI, Volume, and Trend Slope filters. Uses ATR for stops.',
     parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
     code: `
-// Golden Cross Strategy with Support/Resistance
-const fastSMA = indicators.sma(data, params.fastPeriod);
-const slowSMA = indicators.sma(data, params.slowPeriod);
+// Optimized Golden Cross (Trend + Momentum + Volume)
+const fastSMA = indicators.sma(data, params.fastPeriod); // 50
+const slowSMA = indicators.sma(data, params.slowPeriod); // 200
+const rsi = indicators.rsi(data, 14);
 
-const currentFast = fastSMA[fastSMA.length - 1];
-const currentSlow = slowSMA[slowSMA.length - 1];
-const prevFast = fastSMA[fastSMA.length - 2];
-const prevSlow = slowSMA[slowSMA.length - 2];
+// Get current and previous values
+const i = data.length - 1;
+const currentFast = fastSMA[i];
+const currentSlow = slowSMA[i];
+const prevFast = fastSMA[i-1];
+const prevSlow = slowSMA[i-1];
 
-if (prevFast < prevSlow && currentFast > currentSlow) {
-  const currentClose = data[data.length - 1].close;
+// 1. The Crossover Signal
+const isGoldenCross = prevFast < prevSlow && currentFast > currentSlow;
+
+if (isGoldenCross) {
+  const currentClose = data[i].close;
   
-  // Find Support & Resistance
-  const { supports, resistances } = indicators.findSupportResistance(data, 10);
-  
-  // Stop Loss: Nearest Support below current price
-  let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
-  
-  // Fallback if no support found nearby (use percentage)
-  if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.15) {
-     stopLoss = currentClose * (1 - params.defaultRiskPct);
+  // --- IMPROVEMENT 1: RSI Filter ---
+  // Avoid buying if RSI is already overbought (>70). 
+  // We want momentum (>50) but plenty of room to run.
+  const currentRsi = rsi[i];
+  const isHealthyMomentum = currentRsi > 50 && currentRsi < 70;
+
+  // --- IMPROVEMENT 2: 200 SMA Slope ---
+  // Ensure the long-term trend isn't pointing down.
+  // We check if the 200 SMA is higher than it was 5 days ago.
+  const slowSma5DaysAgo = slowSMA[i-5];
+  const isTrendFlatOrUp = currentSlow >= slowSma5DaysAgo;
+
+  // --- IMPROVEMENT 3: Volume Confirmation ---
+  // Check if current volume is at least 10% higher than the 20-day average
+  const recentVols = data.slice(-21, -1).map(c => c.volume);
+  const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
+  const isVolumeSupported = data[i].volume > (avgVol * 1.1);
+
+  // Combine all conditions
+  if (isHealthyMomentum && isTrendFlatOrUp && isVolumeSupported) {
+    
+    // Find Support & Resistance
+    const { supports, resistances } = indicators.findSupportResistance(data, 20); // Increased lookback to 20 for better levels
+    
+    // Stop Loss: Nearest Support
+    let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+    
+    // Fallback: Use ATR based stop if support is too far or missing
+    // (ATR is better than fixed % because it adapts to volatility)
+    const atr = indicators.atr(data, 14);
+    const currentAtr = atr[atr.length - 1];
+    
+    if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.08) {
+       stopLoss = currentClose - (currentAtr * 2); // 2 ATR Stop
+    }
+
+    // Target: Nearest Resistance
+    let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
+    
+    if (!target) {
+       const risk = currentClose - stopLoss;
+       target = currentClose + (risk * 2); // 2R Target
+    }
+
+    return {
+      signal: 'BUY',
+      stopLoss: stopLoss,
+      target: target,
+      reason: \`Golden Cross Optimized: RSI \${currentRsi.toFixed(1)} + Rising 200SMA + Vol Support\`
+    };
   }
-
-  // Target: Nearest Resistance above current price
-  let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
-  
-  // Fallback if no resistance found (use 2x Risk)
-  if (!target) {
-     const risk = currentClose - stopLoss;
-     target = currentClose + (risk * 2);
-  }
-
-  return {
-    signal: 'BUY',
-    stopLoss: stopLoss,
-    target: target,
-    reason: \`Golden Cross + S/R Levels (SL: \${stopLoss.toFixed(2)}, TGT: \${target.toFixed(2)})\`
-  };
 }
 return null;
     `
@@ -158,12 +189,86 @@ return null;
     `
   },
   {
-    id: 'macd-crossover',
-    name: 'MACD Crossover (Smart Trend + Chandelier)',
-    description: 'Buys when MACD crosses above Signal line in an uptrend. Uses ADX to filter chop and Chandelier Exit for stops.',
+    id: 'macd-pro',
+    name: 'MACD Pro (Zero Line + Impulse)',
+    description: 'Advanced MACD strategy. Buys crossovers near the Zero Line with expanding momentum (Impulse) and strong ADX trend.',
+    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, minAdx: 25 },
+    code: `
+// MACD "Pro" Strategy (Zero Line + Impulse + ADX)
+const { macdLine, signalLine, histogram } = indicators.macd(data, params.fast, params.slow, params.signal);
+const trendSMA = indicators.sma(data, params.trendSma);
+const adx = indicators.adx(data, 14);
+const chandelier = indicators.chandelierExit(data, 22, 3.0);
+
+const i = data.length - 1;
+const currMacd = macdLine[i];
+const currSig = signalLine[i];
+const prevMacd = macdLine[i-1];
+const prevSig = signalLine[i-1];
+const currHist = histogram[i];
+const prevHist = histogram[i-1];
+
+const currentClose = data[i].close;
+const currentTrend = trendSMA[trendSMA.length - 1];
+const currentAdx = adx[adx.length - 1];
+
+// 1. Bullish Crossover
+const isCrossover = prevMacd < prevSig && currMacd > currSig;
+
+// --- IMPROVEMENT 1: Zero Line Vicinity ---
+// We prefer crosses that happen below 0 (reversal) or just slightly above 0 (continuation).
+// We avoid crosses that are too high (overextended).
+const isNotOverextended = currMacd < (currentClose * 0.02); // Loose safety check
+
+// --- IMPROVEMENT 2: Histogram Expansion (Impulse) ---
+// We want the histogram to be growing green. This shows buyers are stepping on the gas.
+const isImpulse = currHist > prevHist && currHist > 0;
+
+// 3. Trend Filter & Chop Filter
+const isUptrend = currentClose > currentTrend;
+const isTrending = currentAdx > params.minAdx; // Raised to 25 for stronger confirmation
+
+// 4. Volume Confirmation (Standard requirement for swing)
+const recentVols = data.slice(-21, -1).map(c => c.volume);
+const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
+const isVolume = data[i].volume > avgVol; 
+
+if (isCrossover && isUptrend && isTrending && isNotOverextended && isImpulse && isVolume) {
+  
+  // Stop Loss: Chandelier Exit (Dynamic Trailing Stop)
+  let stopLoss = chandelier[i];
+  const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
+  
+  if (!isValidChandelier) {
+     const { supports } = indicators.findSupportResistance(data, 20);
+     const nearestSupport = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+     stopLoss = nearestSupport || currentClose * 0.95;
+  }
+  
+  // Safety: Prevent SL above price
+  if (stopLoss >= currentClose) stopLoss = currentClose * 0.95;
+
+  // Target
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 3);
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`MACD Pro: Zero-Zone Cross + Impulse + ADX(\${currentAdx.toFixed(0)}) > 25\`
+  };
+}
+return null;
+    `
+  },
+  {
+    id: 'macd-standard',
+    name: 'MACD (Standard)',
+    description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter.',
     parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, minAdx: 20 },
     code: `
-// MACD Crossover Strategy with ADX Filter & Chandelier Exit
+// MACD Standard (Smart Trend + Chandelier)
 const { macdLine, signalLine } = indicators.macd(data, params.fast, params.slow, params.signal);
 const trendSMA = indicators.sma(data, params.trendSma);
 const rsi = indicators.rsi(data, 14);
@@ -183,40 +288,28 @@ const currentAdx = adx[adx.length - 1];
 // 1. Bullish Crossover
 const isCrossover = prevMacd < prevSig && currMacd > currSig;
 
-// 2. Trend Filter: Price must be above 200 SMA
+// 2. Trend Filter
 const isUptrend = currentClose > currentTrend;
 
-// 3. Momentum Check: RSI should not be overbought (>70)
+// 3. Momentum Check
 const isHealthy = currentRsi < params.maxRsi;
 
-// 4. Chop Filter: ADX > 20 (Trend is present)
-// If ADX is low, market is chopping, MACD will fail.
+// 4. Chop Filter
 const isTrending = currentAdx > params.minAdx;
 
 if (isCrossover && isUptrend && isHealthy && isTrending) {
-  // Stop Loss: Chandelier Exit (Dynamic Trailing Stop)
   let stopLoss = chandelier[chandelier.length - 1];
   
-  // Validation: Ensure Chandelier is valid AND below current price
   const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
   
   if (!isValidChandelier) {
      const { supports } = indicators.findSupportResistance(data, 10);
      const nearestSupport = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
-     
-     if (nearestSupport && nearestSupport < currentClose) {
-        stopLoss = nearestSupport;
-     } else {
-        stopLoss = currentClose * 0.95; // Default 5% stop
-     }
+     stopLoss = nearestSupport || currentClose * 0.95;
   }
 
-  // Final Safety Check
-  if (stopLoss >= currentClose) {
-     stopLoss = currentClose * 0.95;
-  }
+  if (stopLoss >= currentClose) stopLoss = currentClose * 0.95;
 
-  // Target: 3R
   const risk = currentClose - stopLoss;
   let target = currentClose + (risk * 3);
 
@@ -224,7 +317,7 @@ if (isCrossover && isUptrend && isHealthy && isTrending) {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`MACD Cross + Uptrend + ADX(\${currentAdx.toFixed(0)}) > 20\`
+    reason: \`MACD Standard: Cross + Uptrend + ADX > 20\`
   };
 }
 return null;
