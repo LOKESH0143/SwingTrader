@@ -99,6 +99,16 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
         const signal = executeStrategy(currentData, strategy.parameters, indicators);
         
         if (signal && signal.signal === 'BUY') {
+          // Safety Validation
+          if (isNaN(signal.stopLoss) || isNaN(signal.target)) {
+            // console.warn('Invalid Signal (NaN):', signal);
+            continue;
+          }
+          if (signal.stopLoss >= candle.close) {
+             // console.warn('Invalid Signal (SL >= Price):', signal);
+             continue;
+          }
+
           // Apply Filters
           if (filters) {
             const entryPrice = candle.close;

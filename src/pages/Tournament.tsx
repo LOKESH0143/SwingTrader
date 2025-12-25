@@ -112,7 +112,7 @@ export function Tournament() {
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Strategy Tournament</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Strategy Tournament v2.1</h1>
           <p className="text-slate-600 mt-2">
             Battle of the bots! Run all strategies against Nifty 100 stocks (1 Year) to find the champion.
           </p>

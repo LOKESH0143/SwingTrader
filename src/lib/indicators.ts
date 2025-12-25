@@ -149,37 +149,6 @@ export function bollingerBands(data: Candle[], period: number = 20, multiplier: 
   return { upper, middle: smaLine, lower };
 }
 
-// Standard Deviation
-export function stdDev(data: Candle[], period: number): number[] {
-  const results: number[] = [];
-  const smaValues = sma(data, period);
-
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      results.push(NaN);
-      continue;
-    }
-    
-    const slice = data.slice(i - period + 1, i + 1);
-    const mean = smaValues[i];
-    const squaredDiffs = slice.map(c => Math.pow(c.close - mean, 2));
-    const variance = squaredDiffs.reduce((a, b) => a + b, 0) / period;
-    results.push(Math.sqrt(variance));
-  }
-  return results;
-}
-
-// Bollinger Bands
-export function bollingerBands(data: Candle[], period: number = 20, multiplier: number = 2) {
-  const smaLine = sma(data, period);
-  const stdDevLine = stdDev(data, period);
-  
-  const upper = smaLine.map((val, i) => val + (stdDevLine[i] * multiplier));
-  const lower = smaLine.map((val, i) => val - (stdDevLine[i] * multiplier));
-  
-  return { upper, middle: smaLine, lower };
-}
-
 // Stochastic Oscillator
 export function stochastic(data: Candle[], period: number = 14, smoothK: number = 3, smoothD: number = 3) {
   const kLine: number[] = [];
@@ -216,57 +185,57 @@ export function stochastic(data: Candle[], period: number = 14, smoothK: number 
   return { k: kLine, d: dLine };
 }
 
+// True Range
+export function trueRange(current: Candle, prev: Candle): number {
+  const hl = current.high - current.low;
+  const hpc = Math.abs(current.high - prev.close);
+  const lpc = Math.abs(current.low - prev.close);
+  return Math.max(hl, hpc, lpc);
+}
+
 // Average True Range (ATR)
 export function atr(data: Candle[], period: number = 14): number[] {
   const trValues: number[] = [];
-  
   for (let i = 0; i < data.length; i++) {
     if (i === 0) {
       trValues.push(data[i].high - data[i].low);
-      continue;
-    }
-    
-    const high = data[i].high;
-    const low = data[i].low;
-    const prevClose = data[i - 1].close;
-    
-    const tr = Math.max(
-      high - low,
-      Math.abs(high - prevClose),
-      Math.abs(low - prevClose)
-    );
-    trValues.push(tr);
-  }
-
-  return smaNum(trValues, period);
-}
-
-// Helper for number array SMA
-function smaNum(data: number[], period: number): number[] {
-  const results: number[] = [];
-  let sum = 0;
-  for (let i = 0; i < data.length; i++) {
-    sum += data[i];
-    if (i >= period) sum -= data[i - period];
-    
-    if (i >= period - 1) {
-      results.push(sum / period);
     } else {
-      results.push(NaN);
+      trValues.push(trueRange(data[i], data[i-1]));
     }
   }
-  return results;
+  
+  // Wilder's Smoothing (RMA)
+  const atrValues: number[] = [];
+  let currentATR = 0;
+  
+  // First ATR is SMA of TR
+  if (data.length < period) return Array(data.length).fill(NaN);
+  
+  let sumTR = 0;
+  for(let i=0; i<period; i++) sumTR += trValues[i];
+  currentATR = sumTR / period;
+  
+  // Fill initial NaNs
+  for(let i=0; i<period-1; i++) atrValues.push(NaN);
+  atrValues.push(currentATR);
+  
+  for(let i=period; i<data.length; i++) {
+    currentATR = ((currentATR * (period - 1)) + trValues[i]) / period;
+    atrValues.push(currentATR);
+  }
+  
+  return atrValues;
 }
 
 // Keltner Channels
 export function keltnerChannels(data: Candle[], period: number = 20, multiplier: number = 1.5) {
   const middle = ema(data, period);
-  const atrLine = atr(data, 10); // Standard TTM uses ATR 10 for KC
+  const atrLine = atr(data, period); // Usually ATR period 10 or 20. Using same period for simplicity.
   
   const upper: number[] = [];
   const lower: number[] = [];
-
-  for (let i = 0; i < data.length; i++) {
+  
+  for(let i=0; i<data.length; i++) {
     if (isNaN(middle[i]) || isNaN(atrLine[i])) {
       upper.push(NaN);
       lower.push(NaN);
@@ -279,38 +248,151 @@ export function keltnerChannels(data: Candle[], period: number = 20, multiplier:
   return { upper, middle, lower };
 }
 
-// Linear Regression (for TTM Histogram)
-export function linearRegression(data: number[], length: number): number[] {
-  const results: number[] = [];
+// Chandelier Exit
+export function chandelierExit(data: Candle[], period: number = 22, multiplier: number = 3.0) {
+  const atrLine = atr(data, period);
+  const longStops: number[] = [];
   
-  // X coordinates are fixed: 0, 1, 2, ... length-1
-  const xSum = (length * (length - 1)) / 2;
-  const xSquaredSum = (length * (length - 1) * (2 * length - 1)) / 6;
-  const divisor = length * xSquaredSum - xSum * xSum;
-
-  for (let i = 0; i < data.length; i++) {
-    if (i < length - 1) {
-      results.push(NaN);
+  for(let i=0; i<data.length; i++) {
+    if (i < period || isNaN(atrLine[i])) {
+      longStops.push(NaN);
       continue;
     }
     
-    const ySlice = data.slice(i - length + 1, i + 1);
-    
-    let xySum = 0;
-    let ySum = 0;
-    for (let j = 0; j < length; j++) {
-      xySum += j * ySlice[j];
-      ySum += ySlice[j];
+    // Highest High of last 'period' days
+    let highestHigh = -Infinity;
+    for(let j=0; j<period; j++) {
+      if (data[i-j].high > highestHigh) highestHigh = data[i-j].high;
     }
     
-    const slope = (length * xySum - xSum * ySum) / divisor;
-    const intercept = (ySum - slope * xSum) / length;
-    
-    // Predict the value at the end of the line (x = length - 1)
-    results.push(slope * (length - 1) + intercept);
+    longStops.push(highestHigh - (atrLine[i] * multiplier));
   }
-  return results;
+  
+  return longStops;
 }
+
+// TTM Squeeze Helper
+export function ttmSqueeze(data: Candle[]) {
+  // BB (20, 2)
+  const bb = bollingerBands(data, 20, 2.0);
+  // KC (20, 1.5)
+  const kc = keltnerChannels(data, 20, 1.5);
+  
+  // Momentum (Using MACD Histogram as robust proxy)
+  const { histogram } = macd(data, 12, 26, 9);
+  
+  const squeezeOn: boolean[] = [];
+  
+  for(let i=0; i<data.length; i++) {
+    // Squeeze ON if BB is inside KC
+    const isSqueeze = bb.upper[i] < kc.upper[i] && bb.lower[i] > kc.lower[i];
+    squeezeOn.push(isSqueeze);
+  }
+  
+  return { squeezeOn, histogram };
+}
+
+// VWAP (Rolling)
+export function vwap(data: Candle[], period: number = 20): number[] {
+  const vwapLine: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      vwapLine.push(NaN);
+      continue;
+    }
+    
+    let sumPV = 0;
+    let sumVol = 0;
+    
+    for (let j = 0; j < period; j++) {
+      const c = data[i-j];
+      const typicalPrice = (c.high + c.low + c.close) / 3;
+      sumPV += typicalPrice * c.volume;
+      sumVol += c.volume;
+    }
+    
+    vwapLine.push(sumPV / sumVol);
+  }
+  
+  return vwapLine;
+}
+
+// Volume Profile (Simplified)
+export function getVolumeProfile(data: Candle[], period: number = 50, buckets: number = 20) {
+  if (data.length < period) return null;
+  
+  const slice = data.slice(-period);
+  const maxPrice = Math.max(...slice.map(c => c.high));
+  const minPrice = Math.min(...slice.map(c => c.low));
+  const range = maxPrice - minPrice;
+  const bucketSize = range / buckets;
+  
+  const volumeProfile: number[] = new Array(buckets).fill(0);
+  
+  slice.forEach(c => {
+    // Distribute volume across the candle's range
+    // Simplified: Add volume to the bucket of the Close price
+    // Better: Add to bucket of (High+Low+Close)/3
+    const typicalPrice = (c.high + c.low + c.close) / 3;
+    const bucketIndex = Math.min(Math.floor((typicalPrice - minPrice) / bucketSize), buckets - 1);
+    volumeProfile[bucketIndex] += c.volume;
+  });
+  
+  // Find POC (Point of Control) - Bucket with max volume
+  let maxVol = 0;
+  let pocIndex = 0;
+  volumeProfile.forEach((vol, i) => {
+    if (vol > maxVol) {
+      maxVol = vol;
+      pocIndex = i;
+    }
+  });
+  
+  const pocPrice = minPrice + (pocIndex * bucketSize) + (bucketSize / 2);
+  
+  // Calculate Value Area (70% of volume)
+  const totalVol = volumeProfile.reduce((a, b) => a + b, 0);
+  const valueAreaVol = totalVol * 0.70;
+  
+  let currentVol = volumeProfile[pocIndex];
+  let upIdx = pocIndex;
+  let downIdx = pocIndex;
+  let vahIndex = pocIndex;
+  let valIndex = pocIndex;
+  
+  while (currentVol < valueAreaVol) {
+    const upVol = (upIdx < buckets - 1) ? volumeProfile[upIdx + 1] : 0;
+    const downVol = (downIdx > 0) ? volumeProfile[downIdx - 1] : 0;
+    
+    if (upVol > downVol) {
+      upIdx++;
+      currentVol += upVol;
+      vahIndex = upIdx;
+    } else if (downVol > 0) {
+      downIdx--;
+      currentVol += downVol;
+      valIndex = downIdx;
+    } else if (upIdx < buckets - 1) { // Force move if stuck
+      upIdx++;
+      currentVol += volumeProfile[upIdx];
+      vahIndex = upIdx;
+    } else if (downIdx > 0) {
+      downIdx--;
+      currentVol += volumeProfile[downIdx];
+      valIndex = downIdx;
+    } else {
+      break;
+    }
+  }
+  
+  const vah = minPrice + (vahIndex * bucketSize) + bucketSize;
+  const val = minPrice + (valIndex * bucketSize);
+  
+  return { poc: pocPrice, vah, val, volumeProfile };
+}
+
+// Find Support and Resistance levels based on Swing Highs and Lows
 export function findSupportResistance(data: Candle[], lookback: number = 20) {
   const levels: { price: number; type: 'SUPPORT' | 'RESISTANCE' }[] = [];
   
@@ -340,6 +422,30 @@ export function findSupportResistance(data: Candle[], lookback: number = 20) {
   const resistances = levels.filter(l => l.type === 'RESISTANCE').map(l => l.price).sort((a, b) => a - b); // Ascending (nearest first)
 
   return { supports, resistances };
+}
+
+// Candlestick Patterns
+export function isBullishEngulfing(current: Candle, prev: Candle): boolean {
+  const prevRed = prev.close < prev.open;
+  const currGreen = current.close > current.open;
+  
+  if (!prevRed || !currGreen) return false;
+  
+  // Engulfing body: Open <= Prev Close AND Close >= Prev Open
+  return current.open <= prev.close && current.close >= prev.open;
+}
+
+export function isHammer(candle: Candle): boolean {
+  const body = Math.abs(candle.close - candle.open);
+  const lowerWick = Math.min(candle.open, candle.close) - candle.low;
+  const upperWick = candle.high - Math.max(candle.open, candle.close);
+  const totalRange = candle.high - candle.low;
+  
+  // Hammer logic: 
+  // 1. Lower wick is at least 2x the body
+  // 2. Upper wick is small (less than body)
+  // 3. Body is in the upper third of the range (optional, but good)
+  return lowerWick >= 2 * body && upperWick <= body && body > 0;
 }
 
 export function getNearestLevel(price: number, levels: number[], type: 'SUPPORT' | 'RESISTANCE'): number | null {

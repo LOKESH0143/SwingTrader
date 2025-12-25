@@ -102,11 +102,11 @@ return null;
   },
   {
     id: 'breakout-vol',
-    name: 'Volume Breakout (Smart S/R)',
-    description: 'Buys when price breaks 20-day high with 2x average volume. Uses Support/Resistance for exits.',
+    name: 'Volume Breakout (Volume Profile)',
+    description: 'Buys when price breaks 20-day high with 2x volume AND clears the Value Area High (VAH).',
     parameters: { lookback: 20, volumeMult: 2.0, defaultRiskPct: 0.05 },
     code: `
-// Volume Breakout Strategy with Support/Resistance
+// Volume Breakout Strategy with Volume Profile
 const lookback = params.lookback;
 const recentHighs = data.slice(-lookback - 1, -1).map(c => c.high);
 const maxHigh = Math.max(...recentHighs);
@@ -118,19 +118,27 @@ const currentVol = data[data.length - 1].volume;
 const recentVols = data.slice(-lookback - 1, -1).map(c => c.volume);
 const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
 
-if (currentClose > maxHigh && currentVol > (avgVol * params.volumeMult)) {
+// Volume Profile Check (Last 50 days)
+const vp = indicators.getVolumeProfile(data, 50, 20);
+const isAboveVAH = vp ? currentClose > vp.vah : true; // Fallback to true if not enough data
+
+if (currentClose > maxHigh && currentVol > (avgVol * params.volumeMult) && isAboveVAH) {
   // Find Support & Resistance
   const { supports, resistances } = indicators.findSupportResistance(data, 10);
 
-  // Stop Loss: Nearest Support below current price (likely the breakout level or recent low)
+  // Stop Loss: Nearest Support or VAH (Value Area High acts as support now)
   let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+  
+  if (!stopLoss && vp) {
+     stopLoss = vp.vah; // Use VAH as support
+  }
   
   // Fallback
   if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.15) {
      stopLoss = currentClose * (1 - params.defaultRiskPct);
   }
 
-  // Target: Nearest Resistance above
+  // Target: Nearest Resistance
   let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
   
   // Fallback
@@ -143,7 +151,7 @@ if (currentClose > maxHigh && currentVol > (avgVol * params.volumeMult)) {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`Breakout + S/R Levels (SL: \${stopLoss.toFixed(2)}, TGT: \${target.toFixed(2)})\`
+    reason: \`Breakout > 20d High & VAH. Vol: \${(currentVol/avgVol).toFixed(1)}x\`
   };
 }
 return null;
@@ -151,14 +159,15 @@ return null;
   },
   {
     id: 'macd-crossover',
-    name: 'MACD Crossover (Smart Trend)',
-    description: 'Buys when MACD crosses above Signal line, BUT only if price is above 200 SMA (Trend) and RSI is not overbought.',
-    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, defaultRiskPct: 0.05 },
+    name: 'MACD Crossover (Smart Trend + Chandelier)',
+    description: 'Buys when MACD crosses above Signal line in an uptrend. Uses Chandelier Exit (ATR x 3) to ride the trend.',
+    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70 },
     code: `
-// MACD Crossover Strategy with Trend Filter
+// MACD Crossover Strategy with Chandelier Exit
 const { macdLine, signalLine } = indicators.macd(data, params.fast, params.slow, params.signal);
 const trendSMA = indicators.sma(data, params.trendSma);
 const rsi = indicators.rsi(data, 14);
+const chandelier = indicators.chandelierExit(data, 22, 3.0); // PDF recommends 22 period, 3.0 mult
 
 const currMacd = macdLine[macdLine.length - 1];
 const currSig = signalLine[signalLine.length - 1];
@@ -179,27 +188,38 @@ const isUptrend = currentClose > currentTrend;
 const isHealthy = currentRsi < params.maxRsi;
 
 if (isCrossover && isUptrend && isHealthy) {
-  // Find Support & Resistance
-  const { supports, resistances } = indicators.findSupportResistance(data, 10);
-
-  // Stop Loss: Nearest Support
-  let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
-  if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.15) {
-     stopLoss = currentClose * (1 - params.defaultRiskPct);
+  // Stop Loss: Chandelier Exit (Dynamic Trailing Stop)
+  let stopLoss = chandelier[chandelier.length - 1];
+  
+  // Validation: Ensure Chandelier is valid AND below current price
+  // If Chandelier is above price, it means the trend is down/reversing, so we can't use it as a long stop
+  const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
+  
+  if (!isValidChandelier) {
+     const { supports } = indicators.findSupportResistance(data, 10);
+     const nearestSupport = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+     
+     if (nearestSupport && nearestSupport < currentClose) {
+        stopLoss = nearestSupport;
+     } else {
+        stopLoss = currentClose * 0.95; // Default 5% stop
+     }
   }
 
-  // Target: Nearest Resistance
-  let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
-  if (!target) {
-     const risk = currentClose - stopLoss;
-     target = currentClose + (risk * 2);
+  // Final Safety Check to prevent negative R:R
+  if (stopLoss >= currentClose) {
+     stopLoss = currentClose * 0.95;
   }
+
+  // Target: Open-ended trend following, but we set a 3R target as a baseline
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 3);
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`MACD Cross + Uptrend (Price > SMA200) + Healthy RSI (\${currentRsi.toFixed(0)})\`
+    reason: \`MACD Cross + Uptrend. Trailing SL: Chandelier Exit (\${stopLoss.toFixed(2)})\`
   };
 }
 return null;
@@ -413,58 +433,57 @@ if (isGapUp && isGreen) {
 }
 return null;
     `
+  },
   {
     id: 'ttm-squeeze',
-    name: 'TTM Squeeze (Momentum Physics)',
-    description: 'The "Coil and Burst". Buys when Bollinger Bands squeeze inside Keltner Channels, then fires on momentum expansion.',
-    parameters: { bbPeriod: 20, bbMult: 2.0, kcMult: 1.5, defaultRiskPct: 0.05 },
+    name: 'TTM Squeeze (Volatility Breakout)',
+    description: 'Identifies periods of low volatility (Squeeze) followed by an explosive move. Uses Chandelier Exit for stops.',
+    parameters: { defaultRiskPct: 0.05 },
     code: `
 // TTM Squeeze Strategy
-const bb = indicators.bollingerBands(data, params.bbPeriod, params.bbMult);
-const kc = indicators.keltnerChannels(data, params.bbPeriod, params.kcMult);
+const { squeezeOn, histogram } = indicators.ttmSqueeze(data);
+const chandelier = indicators.chandelierExit(data, 22, 3.0);
 
-// Calculate Momentum (Linear Reg of Price delta)
-// Simplified proxy: Delta of Close vs Avg(High, Low)
-const prices = data.map(c => c.close - (c.high + c.low)/2);
-const momentum = indicators.linearRegression(prices, 20); // 20 period LinReg
-
-const current = data[data.length - 1];
-const prev = data[data.length - 2];
 const i = data.length - 1;
-const iPrev = data.length - 2;
+const currentSqueeze = squeezeOn[i];
+const prevSqueeze = squeezeOn[i-1];
+const prev2Squeeze = squeezeOn[i-2];
 
-// 1. Squeeze Condition (Red Dot): BB inside KC
-// We check if the Squeeze WAS on recently (coiling)
-const wasSqueeze = bb.upper[iPrev] < kc.upper[iPrev] && bb.lower[iPrev] > kc.lower[iPrev];
+const currentHist = histogram[i];
+const prevHist = histogram[i-1];
 
-// 2. Fire Condition (Green Dot): BB expands outside KC
-const isFired = bb.upper[i] > kc.upper[i] || bb.lower[i] < kc.lower[i];
+// 1. Setup: Was there a squeeze recently? (Red Dot)
+// We check if we were in a squeeze in the last few bars but NOW we are firing
+const wasSqueeze = prevSqueeze || prev2Squeeze;
 
-// 3. Momentum Condition: Histogram is positive and rising
-const momCurr = momentum[i];
-const momPrev = momentum[iPrev];
-const isBullishMom = momCurr > 0 && momCurr > momPrev;
+// 2. Trigger: Squeeze Fired (Green Dot) - No longer in squeeze
+const squeezeFired = !currentSqueeze && wasSqueeze;
 
-if (wasSqueeze && isFired && isBullishMom) {
-  // Chandelier Exit Logic for Stop Loss (ATR * 3)
-  const atr = indicators.atr(data, 22);
-  const currentAtr = atr[atr.length - 1];
-  const chandelierStop = Math.max(...data.slice(-22).map(c => c.high)) - (currentAtr * 3.0);
+// 3. Momentum: Histogram is Positive and Rising (Cyan bars)
+const isBullishMomentum = currentHist > 0 && currentHist > prevHist;
+
+if (squeezeFired && isBullishMomentum) {
+  const currentClose = data[i].close;
   
-  // Use Chandelier or Swing Low, whichever is tighter/sensible
-  let stopLoss = chandelierStop;
-  if (stopLoss > current.close) stopLoss = current.close * 0.95; // Safety fallback
+  // Stop Loss: Chandelier Exit
+  let stopLoss = chandelier[i];
+  
+  // Fallback if Chandelier is NaN or too far
+  if (!stopLoss || isNaN(stopLoss) || (currentClose - stopLoss) / currentClose > 0.15) {
+     const { supports } = indicators.findSupportResistance(data, 10);
+     stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT') || currentClose * 0.95;
+  }
 
-  // Target: VWAP + 2 StdDev (Approximated here as SMA + 2*BB Width)
-  // Or simply 2x Risk as per standard
-  const risk = current.close - stopLoss;
-  let target = current.close + (risk * 2);
+  // Target: VWAP + 2 StdDev (Approximated as BB Upper + buffer)
+  // Or simply 2x Risk
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 2.5); // Explosive moves target higher RR
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`TTM Squeeze Fired: Volatility Expansion + Rising Momentum\`
+    reason: \`TTM Squeeze Fired + Bullish Momentum. SL: Chandelier Exit\`
   };
 }
 return null;
@@ -473,50 +492,138 @@ return null;
   {
     id: 'smc-liquidity-sweep',
     name: 'SMC Liquidity Sweep (Turtle Soup)',
-    description: 'Smart Money Concept. Buys when price sweeps a key support level (taking stops) and immediately reclaims it.',
-    parameters: { lookback: 20, defaultRiskPct: 0.03 },
+    description: 'Buys when price sweeps a major support level (taking out retail stops) and immediately reverses. High win rate reversal setup.',
+    parameters: { defaultRiskPct: 0.03 },
     code: `
 // SMC Liquidity Sweep Strategy
 const current = data[data.length - 1];
 const prev = data[data.length - 2];
 
-// 1. Identify Key Liquidity Level (Swing Low)
-// We look for a significant low in the last X days
-const lookback = params.lookback;
-const recentLows = data.slice(-lookback - 5, -5).map(c => c.low); // Exclude recent few candles to find "old" support
-const keySupport = Math.min(...recentLows);
+// 1. Identify Key Support (Swing Lows)
+const { supports } = indicators.findSupportResistance(data, 50); // Look back 50 candles for major levels
+const nearestSupport = indicators.getNearestLevel(current.close, supports, 'SUPPORT');
 
-// 2. The Sweep: Price went below support...
-const didSweep = current.low < keySupport;
-
-// 3. The Reclaim: ...but Closed ABOVE it (Failed Breakdown)
-const didReclaim = current.close > keySupport;
-
-// 4. Validation: Green Candle
-const isBullish = current.close > current.open;
-
-if (didSweep && didReclaim && isBullish) {
-  // Stop Loss: Below the sweep wick (the absolute low of the move)
-  const stopLoss = current.low - (current.low * 0.005); // 0.5% buffer below wick
-
-  // Target: The next major liquidity pool (Swing High)
-  const recentHighs = data.slice(-lookback).map(c => c.high);
-  const keyResistance = Math.max(...recentHighs);
+if (nearestSupport) {
+  // 2. Sweep Condition: Price dipped below support but closed above it
+  // We check if the Low was below support, but Close is back above
+  const didSweep = current.low < nearestSupport && current.close > nearestSupport;
   
-  let target = keyResistance;
-  
-  // Ensure min 1:2 RR
-  const risk = current.close - stopLoss;
-  if ((target - current.close) / risk < 2) {
-    target = current.close + (risk * 3); // Aim for 3R on reversals
+  // 3. Strength Condition: Green Candle (Close > Open)
+  const isGreen = current.close > current.open;
+
+  // 4. Volume Confirmation: High volume on the reversal candle (Stopping Volume)
+  const recentVols = data.slice(-21, -1).map(c => c.volume);
+  const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
+  const isHighVol = current.volume > avgVol;
+
+  if (didSweep && isGreen && isHighVol) {
+    // Stop Loss: Just below the sweep low (The "Pin Bar" low)
+    const stopLoss = current.low;
+    
+    // Target: VWAP + 2 StdDev (Mean Reversion)
+    // We calculate a rolling VWAP(20) and add bands
+    const vwapLine = indicators.vwap(data, 20);
+    const currentVWAP = vwapLine[vwapLine.length - 1];
+    
+    // Calculate StdDev of price relative to VWAP (simplified)
+    const stdDevs = indicators.stdDev(data, 20);
+    const currentStdDev = stdDevs[stdDevs.length - 1];
+    
+    let target = currentVWAP + (2 * currentStdDev);
+    
+    // Fallback if VWAP target is too close or below price
+    if (target <= current.close) {
+       target = current.close + ((current.close - stopLoss) * 3); // 3R Target for reversals
+    }
+
+    return {
+      signal: 'BUY',
+      stopLoss: stopLoss,
+      target: target,
+      reason: \`Liquidity Sweep of \${nearestSupport.toFixed(2)} + High Vol Reversal\`
+    };
   }
+}
+return null;
+    `
+  },
+  {
+    id: 'candle-engulfing',
+    name: 'Bullish Engulfing (Reversal)',
+    description: 'Buys when a large green candle completely engulfs the previous red candle. Strong reversal signal.',
+    parameters: { defaultRiskPct: 0.03 },
+    code: `
+// Bullish Engulfing Strategy
+const current = data[data.length - 1];
+const prev = data[data.length - 2];
+
+// 1. Pattern Check
+const isEngulfing = indicators.isBullishEngulfing(current, prev);
+
+// 2. Context: Should be in a short-term downtrend or pullback
+// Check if Close is below SMA 20 (Pullback)
+const sma20 = indicators.sma(data, 20);
+const currSma = sma20[sma20.length - 1];
+const isPullback = current.close < currSma;
+
+if (isEngulfing && isPullback) {
+  // Stop Loss: Low of the engulfing candle
+  const stopLoss = current.low;
+  
+  // Target: 2x Risk
+  const risk = current.close - stopLoss;
+  let target = current.close + (risk * 2);
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`Liquidity Sweep: Swept \${keySupport.toFixed(2)} and reclaimed. Bear Trap.\`
+    reason: 'Bullish Engulfing Pattern in Pullback'
   };
+}
+return null;
+    `
+  },
+  {
+    id: 'candle-hammer',
+    name: 'Hammer at Support',
+    description: 'Buys when a Hammer candle forms near a key support level. Classic "buy the dip" setup.',
+    parameters: { defaultRiskPct: 0.03 },
+    code: `
+// Hammer at Support Strategy
+const current = data[data.length - 1];
+
+// 1. Pattern Check
+const isHammer = indicators.isHammer(current);
+
+if (isHammer) {
+  // 2. Context: Must be at Support
+  const { supports, resistances } = indicators.findSupportResistance(data, 20);
+  const nearestSupport = indicators.getNearestLevel(current.close, supports, 'SUPPORT');
+  
+  // Check if the Hammer's tail touched or pierced the support
+  // And the support is close (within 2% of Low)
+  const isAtSupport = nearestSupport && 
+                      current.low <= nearestSupport * 1.01 && // Touched or near
+                      current.low >= nearestSupport * 0.98;   // Not too far below
+
+  if (isAtSupport) {
+    // Stop Loss: Low of the Hammer
+    const stopLoss = current.low;
+    
+    // Target: Nearest Resistance
+    let target = indicators.getNearestLevel(current.close, resistances, 'RESISTANCE');
+    if (!target) {
+       target = current.close + ((current.close - stopLoss) * 2);
+    }
+
+    return {
+      signal: 'BUY',
+      stopLoss: stopLoss,
+      target: target,
+      reason: \`Hammer Candle at Support (\${nearestSupport.toFixed(2)})\`
+    };
+  }
 }
 return null;
     `
