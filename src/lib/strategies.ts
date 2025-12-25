@@ -257,67 +257,60 @@ return null;
   },
   {
     id: 'macd-standard',
-    name: 'MACD Tuned (EMA 50 + Impulse)',
-    description: 'Optimized MACD for Nifty 500. Uses EMA 50 for trend, RSI > 45 floor, and Histogram Impulse.',
-    parameters: { fast: 12, slow: 26, signal: 9, trendEma: 50, maxRsi: 70, minAdx: 20 },
+    name: 'MACD (Standard)',
+    description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter.',
+    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, minAdx: 20 },
     code: `
-// MACD Tuned (EMA 50 + Impulse + RSI Floor)
-const { macdLine, signalLine, histogram } = indicators.macd(data, params.fast, params.slow, params.signal);
-const trendEMA = indicators.ema(data, params.trendEma); // Switched to EMA 50 (Faster trend)
+// MACD Standard (Smart Trend + Chandelier)
+const { macdLine, signalLine } = indicators.macd(data, params.fast, params.slow, params.signal);
+const trendSMA = indicators.sma(data, params.trendSma);
 const rsi = indicators.rsi(data, 14);
 const adx = indicators.adx(data, 14);
-const atr = indicators.atr(data, 14);
+const chandelier = indicators.chandelierExit(data, 22, 3.0);
 
-const i = data.length - 1;
-const currMacd = macdLine[i];
-const currSig = signalLine[i];
-const prevMacd = macdLine[i-1];
-const prevSig = signalLine[i-1];
-const currHist = histogram[i];
-const prevHist = histogram[i-1];
+const currMacd = macdLine[macdLine.length - 1];
+const currSig = signalLine[signalLine.length - 1];
+const prevMacd = macdLine[macdLine.length - 2];
+const prevSig = signalLine[signalLine.length - 2];
 
-const currentClose = data[i].close;
-const currentTrend = trendEMA[trendEMA.length - 1];
+const currentClose = data[data.length - 1].close;
+const currentTrend = trendSMA[trendSMA.length - 1];
 const currentRsi = rsi[rsi.length - 1];
 const currentAdx = adx[adx.length - 1];
-const currentAtr = atr[atr.length - 1];
 
 // 1. Bullish Crossover
 const isCrossover = prevMacd < prevSig && currMacd > currSig;
 
-// 2. Trend Filter (EMA 50)
-// SMA 200 was too slow. EMA 50 captures the "swing" trend better.
+// 2. Trend Filter
 const isUptrend = currentClose > currentTrend;
 
-// 3. Momentum Check (RSI Floor)
-// We want RSI to be "alive" (>45) but not exhausted (<70).
-const isHealthyRsi = currentRsi > 45 && currentRsi < params.maxRsi;
+// 3. Momentum Check
+const isHealthy = currentRsi < params.maxRsi;
 
-// 4. Impulse Check (Histogram Expansion)
-// The gap between MACD and Signal must be widening (Green bars growing).
-const isImpulse = currHist > prevHist && currHist > 0;
-
-// 5. Chop Filter
+// 4. Chop Filter
 const isTrending = currentAdx > params.minAdx;
 
-if (isCrossover && isUptrend && isHealthyRsi && isImpulse && isTrending) {
+if (isCrossover && isUptrend && isHealthy && isTrending) {
+  let stopLoss = chandelier[chandelier.length - 1];
   
-  // Stop Loss: 2x ATR (Tighter than Chandelier 3x)
-  // This gets us out faster if the trade fails.
-  let stopLoss = currentClose - (currentAtr * 2.0);
+  const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
   
-  // Safety Check
+  if (!isValidChandelier) {
+     const { supports } = indicators.findSupportResistance(data, 10);
+     const nearestSupport = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+     stopLoss = nearestSupport || currentClose * 0.95;
+  }
+
   if (stopLoss >= currentClose) stopLoss = currentClose * 0.95;
 
-  // Target: 2.5R (More realistic than 3R for MACD)
   const risk = currentClose - stopLoss;
-  let target = currentClose + (risk * 2.5);
+  let target = currentClose + (risk * 3);
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`MACD Tuned: Cross + EMA50 + Impulse. RSI: \${currentRsi.toFixed(0)}\`
+    reason: \`MACD Standard: Cross + Uptrend + ADX > 20\`
   };
 }
 return null;
