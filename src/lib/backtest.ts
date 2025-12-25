@@ -32,6 +32,8 @@ export interface TradeFilters {
   minRiskReward?: number;
   maxStopLossPercent?: number;
   minTargetPercent?: number;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
 }
 
 export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeFilters): BacktestResult {
@@ -52,9 +54,32 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
     strategy.code
   );
 
-  for (let i = warmupPeriod; i < data.length; i++) {
+  // Determine start and end indices based on date filters
+  let startIndex = warmupPeriod;
+  let endIndex = data.length - 1;
+
+  if (filters?.startDate) {
+    const startFilter = new Date(filters.startDate).getTime();
+    const foundIndex = data.findIndex(c => new Date(c.date).getTime() >= startFilter);
+    if (foundIndex > warmupPeriod) startIndex = foundIndex;
+  }
+
+  if (filters?.endDate) {
+    const endFilter = new Date(filters.endDate).getTime();
+    // We want to include the end date, so we look for the first candle AFTER the end date and stop before it
+    // Or just check inside the loop
+  }
+
+  for (let i = startIndex; i <= endIndex; i++) {
     const currentData = data.slice(0, i + 1);
     const candle = data[i];
+    const candleDate = new Date(candle.date).getTime();
+
+    // Check End Date Filter
+    if (filters?.endDate) {
+        const endFilter = new Date(filters.endDate).getTime();
+        if (candleDate > endFilter) break;
+    }
 
     // Check exit conditions for open trade
     if (openTrade) {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter, Calendar } from 'lucide-react';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
 import { PREBUILT_STRATEGIES } from '../lib/strategies';
 import { fetchHistory } from '../services/api';
@@ -27,7 +27,9 @@ export function Tournament() {
   const [filters, setFilters] = useState<TradeFilters>({
     minRiskReward: 0,
     maxStopLossPercent: 0,
-    minTargetPercent: 0
+    minTargetPercent: 0,
+    startDate: '',
+    endDate: ''
   });
   const [showFilters, setShowFilters] = useState(false);
 
@@ -61,14 +63,20 @@ export function Tournament() {
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
-          const data = await fetchHistory(symbol, '1y'); // 1 Year Tournament
+          // If custom date range is set, fetch longer history to accommodate
+          // Otherwise default to 1y
+          const period = (filters.startDate || filters.endDate) ? '2y' : '1y';
+          const data = await fetchHistory(symbol, period);
           
           PREBUILT_STRATEGIES.forEach(strategy => {
             // Pass filters to runBacktest
-            const activeFilters: TradeFilters = {};
-            if (filters.minRiskReward && filters.minRiskReward > 0) activeFilters.minRiskReward = filters.minRiskReward;
-            if (filters.maxStopLossPercent && filters.maxStopLossPercent > 0) activeFilters.maxStopLossPercent = filters.maxStopLossPercent;
-            if (filters.minTargetPercent && filters.minTargetPercent > 0) activeFilters.minTargetPercent = filters.minTargetPercent;
+            const activeFilters: TradeFilters = { ...filters };
+            // Clean up empty values
+            if (!activeFilters.minRiskReward) delete activeFilters.minRiskReward;
+            if (!activeFilters.maxStopLossPercent) delete activeFilters.maxStopLossPercent;
+            if (!activeFilters.minTargetPercent) delete activeFilters.minTargetPercent;
+            if (!activeFilters.startDate) delete activeFilters.startDate;
+            if (!activeFilters.endDate) delete activeFilters.endDate;
 
             const result = runBacktest(strategy, data, activeFilters);
             const sStats = stats[strategy.id];
@@ -217,6 +225,30 @@ export function Tournament() {
                 <span className="absolute right-3 top-2.5 text-slate-400 text-sm">%</span>
               </div>
               <p className="text-xs text-slate-500 mt-1">Only take trades aiming for &gt; {filters.minTargetPercent || 0}% profit.</p>
+            </div>
+
+            {/* Date Range Filters */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                <Calendar size={16} /> Start Date
+              </label>
+              <input 
+                type="date" 
+                value={filters.startDate}
+                onChange={(e) => setFilters({...filters, startDate: e.target.value})}
+                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                <Calendar size={16} /> End Date
+              </label>
+              <input 
+                type="date" 
+                value={filters.endDate}
+                onChange={(e) => setFilters({...filters, endDate: e.target.value})}
+                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
             </div>
           </div>
         </div>
