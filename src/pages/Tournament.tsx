@@ -14,7 +14,7 @@ interface StrategyPerformance {
   totalPnL: number; // Sum of PnL %
   bestSymbol: string;
   bestSymbolPnL: number;
-  allTrades: { symbol: string; pnl: number; pnlPercent: number; date: string }[];
+  allTrades: { symbol: string; pnl: number; pnlPercent: number; date: string; mfe?: number; mae?: number }[];
 }
 
 export function Tournament() {
@@ -54,18 +54,21 @@ export function Tournament() {
       };
     });
 
-    const totalSymbols = NIFTY_500_SYMBOLS.length;
+    // Use Top 100 symbols (Nifty 100) for the Tournament
+    // Using all 500 takes too long and includes low-cap volatility that skews results
+    const tournamentSymbols = NIFTY_500_SYMBOLS.slice(0, 100);
+    const totalSymbols = tournamentSymbols.length;
     
     // Process in chunks
     const chunkSize = 5;
     for (let i = 0; i < totalSymbols; i += chunkSize) {
-      const chunk = NIFTY_500_SYMBOLS.slice(i, i + chunkSize);
+      const chunk = tournamentSymbols.slice(i, i + chunkSize);
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
-          // If custom date range is set, fetch longer history to accommodate
-          // Otherwise default to 1y
-          const period = (filters.startDate || filters.endDate) ? '2y' : '1y';
+          // If custom date range is set, fetch longer history (5y) to ensure we cover the requested period
+          // Otherwise default to 1y for speed
+          const period = (filters.startDate || filters.endDate) ? '5y' : '1y';
           const data = await fetchHistory(symbol, period);
           
           PREBUILT_STRATEGIES.forEach(strategy => {
@@ -99,7 +102,9 @@ export function Tournament() {
                 symbol,
                 pnl: t.pnl,
                 pnlPercent: t.pnlPercent,
-                date: t.entryDate
+                date: t.entryDate,
+                mfe: t.mfe, // Pass MFE
+                mae: t.mae  // Pass MAE
               });
             });
           });
@@ -331,6 +336,7 @@ export function Tournament() {
                                       <th className="px-4 py-2 text-left">Symbol</th>
                                       <th className="px-4 py-2 text-left">Date</th>
                                       <th className="px-4 py-2 text-right">Return</th>
+                                      <th className="px-4 py-2 text-right" title="Max Favorable Excursion (Max Profit Reached)">MFE</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -342,6 +348,7 @@ export function Tournament() {
                                           <td className="px-4 py-2 font-medium">{t.symbol}</td>
                                           <td className="px-4 py-2 text-slate-500">{new Date(t.date).toLocaleDateString()}</td>
                                           <td className="px-4 py-2 text-right text-green-600 font-bold">+{t.pnlPercent.toFixed(2)}%</td>
+                                          <td className="px-4 py-2 text-right text-slate-500">{t.mfe?.toFixed(1)}%</td>
                                         </tr>
                                       ))}
                                   </tbody>
@@ -359,6 +366,7 @@ export function Tournament() {
                                       <th className="px-4 py-2 text-left">Symbol</th>
                                       <th className="px-4 py-2 text-left">Date</th>
                                       <th className="px-4 py-2 text-right">Return</th>
+                                      <th className="px-4 py-2 text-right" title="Max Adverse Excursion (Max Drawdown Reached)">MAE</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -370,6 +378,7 @@ export function Tournament() {
                                           <td className="px-4 py-2 font-medium">{t.symbol}</td>
                                           <td className="px-4 py-2 text-slate-500">{new Date(t.date).toLocaleDateString()}</td>
                                           <td className="px-4 py-2 text-right text-red-600 font-bold">{t.pnlPercent.toFixed(2)}%</td>
+                                          <td className="px-4 py-2 text-right text-slate-500">{t.mae?.toFixed(1)}%</td>
                                         </tr>
                                       ))}
                                   </tbody>

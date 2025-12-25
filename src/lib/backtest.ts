@@ -26,6 +26,11 @@ interface Trade {
   reason: string;
   target: number;
   stopLoss: number;
+  // Debugging Metrics
+  maxPrice: number; // Highest price reached during trade
+  minPrice: number; // Lowest price reached during trade
+  mfe: number;      // Max Favorable Excursion (% max profit)
+  mae: number;      // Max Adverse Excursion (% max drawdown)
 }
 
 export interface TradeFilters {
@@ -61,7 +66,13 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
   if (filters?.startDate) {
     const startFilter = new Date(filters.startDate).getTime();
     const foundIndex = data.findIndex(c => new Date(c.date).getTime() >= startFilter);
-    if (foundIndex > warmupPeriod) startIndex = foundIndex;
+    
+    if (foundIndex === -1) {
+       // Start date is after all available data -> Run nothing
+       startIndex = data.length + 1; 
+    } else if (foundIndex > warmupPeriod) {
+       startIndex = foundIndex;
+    }
   }
 
   if (filters?.endDate) {
@@ -83,14 +94,10 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
 
     // Check exit conditions for open trade
     if (openTrade) {
-      // Simple exit logic: hit target or stop loss
-      // In a real engine, we'd check High/Low of the candle to see if SL/TP was hit within the day
-      // For simplicity, we check Close vs SL/TP
-      
-      // Note: The strategy code currently returns 'stopLoss' and 'target'
-      // We should store these in the trade object
-      
-      // Let's assume the trade object has these properties attached (we'll add them below)
+      // Update High/Low stats for MFE/MAE
+      openTrade.maxPrice = Math.max(openTrade.maxPrice, candle.high);
+      openTrade.minPrice = Math.min(openTrade.minPrice, candle.low);
+
       const tradeSL = (openTrade as any).stopLoss;
       const tradeTP = (openTrade as any).target;
 
@@ -112,6 +119,10 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
         openTrade.pnl = (exitPrice - openTrade.entryPrice) * (10000 / openTrade.entryPrice); // Simulate full equity investment
         openTrade.pnlPercent = ((exitPrice - openTrade.entryPrice) / openTrade.entryPrice) * 100;
         
+        // Calculate Final MFE/MAE
+        openTrade.mfe = ((openTrade.maxPrice - openTrade.entryPrice) / openTrade.entryPrice) * 100;
+        openTrade.mae = ((openTrade.minPrice - openTrade.entryPrice) / openTrade.entryPrice) * 100;
+
         trades.push(openTrade);
         currentEquity += openTrade.pnl;
         openTrade = null;
@@ -169,9 +180,13 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
             pnl: 0,
             pnlPercent: 0,
             reason: signal.reason,
-            // Attach SL/TP for management
             stopLoss: signal.stopLoss,
-            target: signal.target
+            target: signal.target,
+            // Initialize Debug Metrics
+            maxPrice: candle.close,
+            minPrice: candle.close,
+            mfe: 0,
+            mae: 0
           } as Trade;
         }
       } catch (e) {
