@@ -392,6 +392,111 @@ export function getVolumeProfile(data: Candle[], period: number = 50, buckets: n
   return { poc: pocPrice, vah, val, volumeProfile };
 }
 
+// ADX (Average Directional Index)
+export function adx(data: Candle[], period: number = 14): number[] {
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const tr: number[] = [];
+  
+  // Calculate TR, +DM, -DM
+  for (let i = 1; i < data.length; i++) {
+    const curr = data[i];
+    const prev = data[i-1];
+    
+    const upMove = curr.high - prev.high;
+    const downMove = prev.low - curr.low;
+    
+    if (upMove > downMove && upMove > 0) {
+      plusDM.push(upMove);
+    } else {
+      plusDM.push(0);
+    }
+    
+    if (downMove > upMove && downMove > 0) {
+      minusDM.push(downMove);
+    } else {
+      minusDM.push(0);
+    }
+    
+    tr.push(trueRange(curr, prev));
+  }
+  
+  // Smooth TR, +DM, -DM (Wilder's Smoothing)
+  const smoothTR = wilderSmooth(tr, period);
+  const smoothPlusDM = wilderSmooth(plusDM, period);
+  const smoothMinusDM = wilderSmooth(minusDM, period);
+  
+  const adxLine: number[] = [];
+  const dxLine: number[] = [];
+  
+  // Calculate DX and ADX
+  // We need 'period' amount of smoothed data to start
+  // The smoothing function returns array of same length as input, with initial NaNs
+  
+  let prevADX = 0;
+  let firstADXCalculated = false;
+
+  for (let i = 0; i < smoothTR.length; i++) {
+    if (isNaN(smoothTR[i]) || smoothTR[i] === 0) {
+      adxLine.push(NaN);
+      continue;
+    }
+    
+    const plusDI = (smoothPlusDM[i] / smoothTR[i]) * 100;
+    const minusDI = (smoothMinusDM[i] / smoothTR[i]) * 100;
+    
+    const sumDI = plusDI + minusDI;
+    const dx = sumDI === 0 ? 0 : (Math.abs(plusDI - minusDI) / sumDI) * 100;
+    dxLine.push(dx);
+    
+    // ADX is smoothed DX
+    if (!firstADXCalculated) {
+      // Need 'period' values of DX to calculate first ADX
+      if (dxLine.filter(v => !isNaN(v)).length >= period) {
+         // Simple average for first ADX
+         const validDX = dxLine.slice(i - period + 1, i + 1);
+         prevADX = validDX.reduce((a,b) => a+b, 0) / period;
+         adxLine.push(prevADX);
+         firstADXCalculated = true;
+      } else {
+        adxLine.push(NaN);
+      }
+    } else {
+      const currentADX = ((prevADX * (period - 1)) + dx) / period;
+      adxLine.push(currentADX);
+      prevADX = currentADX;
+    }
+  }
+  
+  // Pad the beginning to match data length (we skipped index 0 loop)
+  return [NaN, ...adxLine];
+}
+
+// Helper: Wilder's Smoothing
+function wilderSmooth(data: number[], period: number): number[] {
+  const smoothed: number[] = [];
+  let sum = 0;
+  
+  // First value is SMA
+  for (let i = 0; i < period; i++) {
+    if (i < data.length) sum += data[i];
+  }
+  const firstVal = sum / period;
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      smoothed.push(NaN);
+    } else if (i === period - 1) {
+      smoothed.push(firstVal);
+    } else {
+      const prev = smoothed[i-1];
+      const curr = (prev * (period - 1) + data[i]) / period;
+      smoothed.push(curr);
+    }
+  }
+  return smoothed;
+}
+
 // Find Support and Resistance levels based on Swing Highs and Lows
 export function findSupportResistance(data: Candle[], lookback: number = 20) {
   const levels: { price: number; type: 'SUPPORT' | 'RESISTANCE' }[] = [];

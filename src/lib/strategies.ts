@@ -160,14 +160,15 @@ return null;
   {
     id: 'macd-crossover',
     name: 'MACD Crossover (Smart Trend + Chandelier)',
-    description: 'Buys when MACD crosses above Signal line in an uptrend. Uses Chandelier Exit (ATR x 3) to ride the trend.',
-    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70 },
+    description: 'Buys when MACD crosses above Signal line in an uptrend. Uses ADX to filter chop and Chandelier Exit for stops.',
+    parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, minAdx: 20 },
     code: `
-// MACD Crossover Strategy with Chandelier Exit
+// MACD Crossover Strategy with ADX Filter & Chandelier Exit
 const { macdLine, signalLine } = indicators.macd(data, params.fast, params.slow, params.signal);
 const trendSMA = indicators.sma(data, params.trendSma);
 const rsi = indicators.rsi(data, 14);
-const chandelier = indicators.chandelierExit(data, 22, 3.0); // PDF recommends 22 period, 3.0 mult
+const adx = indicators.adx(data, 14);
+const chandelier = indicators.chandelierExit(data, 22, 3.0);
 
 const currMacd = macdLine[macdLine.length - 1];
 const currSig = signalLine[signalLine.length - 1];
@@ -177,6 +178,7 @@ const prevSig = signalLine[signalLine.length - 2];
 const currentClose = data[data.length - 1].close;
 const currentTrend = trendSMA[trendSMA.length - 1];
 const currentRsi = rsi[rsi.length - 1];
+const currentAdx = adx[adx.length - 1];
 
 // 1. Bullish Crossover
 const isCrossover = prevMacd < prevSig && currMacd > currSig;
@@ -187,12 +189,15 @@ const isUptrend = currentClose > currentTrend;
 // 3. Momentum Check: RSI should not be overbought (>70)
 const isHealthy = currentRsi < params.maxRsi;
 
-if (isCrossover && isUptrend && isHealthy) {
+// 4. Chop Filter: ADX > 20 (Trend is present)
+// If ADX is low, market is chopping, MACD will fail.
+const isTrending = currentAdx > params.minAdx;
+
+if (isCrossover && isUptrend && isHealthy && isTrending) {
   // Stop Loss: Chandelier Exit (Dynamic Trailing Stop)
   let stopLoss = chandelier[chandelier.length - 1];
   
   // Validation: Ensure Chandelier is valid AND below current price
-  // If Chandelier is above price, it means the trend is down/reversing, so we can't use it as a long stop
   const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
   
   if (!isValidChandelier) {
@@ -206,12 +211,12 @@ if (isCrossover && isUptrend && isHealthy) {
      }
   }
 
-  // Final Safety Check to prevent negative R:R
+  // Final Safety Check
   if (stopLoss >= currentClose) {
      stopLoss = currentClose * 0.95;
   }
 
-  // Target: Open-ended trend following, but we set a 3R target as a baseline
+  // Target: 3R
   const risk = currentClose - stopLoss;
   let target = currentClose + (risk * 3);
 
@@ -219,7 +224,7 @@ if (isCrossover && isUptrend && isHealthy) {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`MACD Cross + Uptrend. Trailing SL: Chandelier Exit (\${stopLoss.toFixed(2)})\`
+    reason: \`MACD Cross + Uptrend + ADX(\${currentAdx.toFixed(0)}) > 20\`
   };
 }
 return null;
