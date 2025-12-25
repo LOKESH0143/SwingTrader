@@ -190,6 +190,72 @@ return null;
   },
 
   {
+    id: 'institutional-breakout',
+    name: 'Institutional Breakout (50d High + Vol)',
+    description: 'Buys new 50-day highs with strong volume and a solid close. Filters out weak "wick" breakouts.',
+    parameters: { lookback: 50, volumeMult: 1.5, defaultRiskPct: 0.05 },
+    code: `
+// Institutional Breakout (50d High + Strong Close)
+const lookback = 50; // Increased to 50 (Quarterly High) for significance
+const recentHighs = data.slice(-lookback - 1, -1).map(c => c.high);
+const maxHigh = Math.max(...recentHighs);
+
+const i = data.length - 1;
+const currentClose = data[i].close;
+const currentLow = data[i].low;
+const currentHigh = data[i].high;
+const currentVol = data[i].volume;
+
+// 1. Breakout Condition
+// Price must CLOSE above the 50-Day High (not just touch it)
+const isBreakout = currentClose > maxHigh;
+
+// 2. Volume Condition (Realistic)
+// We look for 1.5x volume (Institutional Interest), not 2x.
+const recentVols = data.slice(-21, -1).map(c => c.volume);
+const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
+const isHighVol = currentVol > (avgVol * 1.5);
+
+// 3. Candle Strength (The "Anti-Trap" Filter)
+// The price must close in the top 25% of the day's range.
+// This ensures we aren't buying a "shooting star" or weak breakout.
+const range = currentHigh - currentLow;
+const closePos = (currentClose - currentLow) / range;
+const isStrongClose = closePos > 0.75;
+
+// 4. Trend Filter (Avoid Bear Market Rallies)
+const sma200 = indicators.sma(data, 200);
+const isUptrend = currentClose > sma200[sma200.length - 1];
+
+if (isBreakout && isHighVol && isStrongClose && isUptrend) {
+  
+  // Stop Loss: Low of the Breakout Candle
+  // This is the most logical stop. If price falls back below today's low,
+  // the breakout has failed immediately.
+  let stopLoss = currentLow;
+  
+  // Safety: If the candle is huge (> 5% risk), tighten stop to midpoint
+  // or use a trailing ATR stop.
+  const riskPct = (currentClose - stopLoss) / currentClose;
+  if (riskPct > 0.05) {
+     stopLoss = currentClose * 0.95; // Cap risk at 5%
+  }
+
+  // Target: Momentum (3R)
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 3);
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`Institutional Breakout: New 50d High + Strong Close + Vol \${(currentVol/avgVol).toFixed(1)}x\`
+  };
+}
+return null;
+    `
+  },
+  {
     id: 'macd-standard',
     name: 'MACD (Standard)',
     description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter.',
@@ -253,8 +319,84 @@ return null;
 
   {
     id: 'bb-squeeze',
-    name: 'Bollinger Band Squeeze',
-    description: 'Buys when price breaks above the Upper Bollinger Band after a period of low volatility (squeeze).',
+    name: 'Bollinger Band Squeeze (True Expansion)',
+    description: 'Buys when price breaks Upper Band with expanding bandwidth and high volume. Filters out fakeouts.',
+    parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
+    code: `
+// Bollinger Band Squeeze (True Expansion + Volume)
+const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
+
+const i = data.length - 1;
+const currentClose = data[i].close;
+const currentOpen = data[i].open;
+const currentHigh = data[i].high;
+const currentLow = data[i].low;
+
+const currentUpper = upper[i];
+const prevUpper = upper[i-1];
+const currentLower = lower[i];
+const prevLower = lower[i-1];
+
+// 1. Calculate Bandwidth (The "Squeeze" Metric)
+// Formula: (Upper - Lower) / Middle
+const currentBW = (currentUpper - currentLower) / middle[i];
+const prevBW = (prevUpper - prevLower) / middle[i-1];
+
+// 2. Expansion Condition (The "Pop")
+// We want the bands to be opening up (volatility increasing)
+const isExpanding = currentBW > prevBW;
+
+// 3. Breakout Condition
+// Price closes ABOVE the Upper Band
+const isBreakout = currentClose > currentUpper;
+
+// 4. Candle Quality (Avoid "Shooting Stars")
+// The Close should be in the upper 25% of the day's range.
+// If there is a huge upper wick, it means sellers pushed it down -> AVOID.
+const range = currentHigh - currentLow;
+const closePosition = (currentClose - currentLow) / range;
+const isStrongClose = closePosition > 0.75;
+
+// 5. Volume Confirmation
+// Volume must be higher than the 20-period average
+const recentVols = data.slice(-21, -1).map(c => c.volume);
+const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
+const isVolumeHigh = data[i].volume > avgVol;
+
+if (isBreakout && isExpanding && isStrongClose && isVolumeHigh) {
+  
+  // Stop Loss: The Middle Band (20 SMA)
+  // In a true "Walk the Bands" breakout, price rarely touches the 20 SMA.
+  // Using the 20 SMA is standard, but if it's too far, use the Low of the Breakout Candle.
+  const sma20 = middle[i];
+  const lowOfCandle = currentLow;
+  
+  // Use the tighter of the two to manage risk, but default to SMA 20 for trend riding
+  let stopLoss = sma20;
+  
+  // Safety: If SMA 20 is > 5% away, tighten to the breakout candle's low
+  if ((currentClose - stopLoss) / currentClose > 0.05) {
+     stopLoss = lowOfCandle;
+  }
+
+  // Target: Momentum play (Open ended) -> But we set 2.5R for the system
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 2.5);
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`BB Squeeze Breakout: Strong Close + Vol Expansion. SL: \${stopLoss.toFixed(2)}\`
+  };
+}
+return null;
+    `
+  },
+  {
+    id: 'bb-breakout-simple',
+    name: 'Bollinger Band Breakout (Simple)',
+    description: 'Buys when price breaks above the Upper Bollinger Band. Simple volatility breakout.',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
     code: `
 // Bollinger Band Squeeze Strategy
@@ -293,6 +435,120 @@ if (isBreakout) {
     stopLoss: stopLoss,
     target: target,
     reason: \`Bollinger Breakout: Price (\${currentClose.toFixed(2)}) > Upper Band (\${currentUpper.toFixed(2)})\`
+  };
+}
+return null;
+    `
+  },
+  {
+    id: 'bb-trend-rider',
+    name: 'Bollinger Trend Rider (Simple + Trend Filter)',
+    description: 'Buys when price breaks Upper Band while above SMA 50. Uses SMA 20 as dynamic stop.',
+    parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
+    code: `
+// Bollinger Trend Rider (Simple + Trend Filter)
+const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
+const sma50 = indicators.sma(data, 50);
+
+const i = data.length - 1;
+const currentClose = data[i].close;
+const prevClose = data[i-1].close;
+
+const currentUpper = upper[i];
+const prevUpper = upper[i-1];
+const currentTrend = sma50[sma50.length - 1];
+
+// 1. The Simple Breakout (Cross over Upper Band)
+// We go back to the raw signal: Price crossed the line.
+const isBreakout = prevClose < prevUpper && currentClose > currentUpper;
+
+// 2. The ONLY Filter: Trend Alignment
+// If price is below 50 SMA, the stock is structurally weak. Breakouts here fail often.
+// If price is above 50 SMA, the "Wind is at your back."
+const isUptrend = currentClose > currentTrend;
+
+if (isBreakout && isUptrend) {
+  
+  // Stop Loss: The Middle Band (20 SMA)
+  // Why? In a strong trend, price 'surfs' the upper band and respects the 20 SMA.
+  // "Nearest Support" can sometimes be too far away (10%+ risk).
+  // SMA 20 is dynamic and trails the price up.
+  let stopLoss = middle[i];
+  
+  // Target: Momentum (Let it ride)
+  // We use a 3R target, but ideally, you would trail the stop using the 20 SMA.
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 3);
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`Bollinger Trend Rider: Breakout > SMA 50. Stop: SMA 20\`
+  };
+}
+return null;
+    `
+  },
+  {
+    id: 'stoch-dip-buyer',
+    name: 'Stochastic Dip Buyer (Trend Filter + Green Candle)',
+    description: 'Buys oversold dips ONLY in a long-term uptrend (Above SMA 200). Avoids catching falling knives.',
+    parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05 },
+    code: `
+// Stochastic Dip Buyer (Trend Filter + Green Candle)
+const { k, d } = indicators.stochastic(data, params.kPeriod, 3, params.dPeriod);
+const sma200 = indicators.sma(data, 200); // The Long-Term Trend Line
+
+const i = data.length - 1;
+const currK = k[i];
+const currD = d[i];
+const prevK = k[i-1];
+const prevD = d[i-1];
+
+const currentClose = data[i].close;
+const currentOpen = data[i].open;
+const currentTrend = sma200[sma200.length - 1];
+
+// 1. Oversold Condition (The Dip)
+// We look for deep value (< 20 or 25)
+const isOversold = prevK < params.oversold && prevD < params.oversold;
+
+// 2. Crossover Condition (The Trigger)
+const isCrossover = prevK < prevD && currK > currD;
+
+// 3. Trend Filter (The Safety Net)
+// We ONLY buy dips if the long-term trend is UP.
+const isUptrend = currentClose > currentTrend;
+
+// 4. Confirmation (Green Candle)
+// We want to see actual buyers on the day of the crossover.
+// Avoid buying if the crossover happened on a red "doji" or weak candle.
+const isGreen = currentClose > currentOpen;
+
+if (isOversold && isCrossover && isUptrend && isGreen) {
+
+  // Stop Loss: Recent Low
+  // Since we are buying a dip, the "Low" of the dip is our invalidation point.
+  const lowOfDip = Math.min(data[i].low, data[i-1].low, data[i-2].low);
+  let stopLoss = lowOfDip;
+  
+  // Safety: If the dip low is too close (< 2%), give it some room
+  if ((currentClose - stopLoss) / currentClose < 0.02) {
+     stopLoss = currentClose * 0.97; // 3% wiggle room
+  }
+
+  // Target: The Mean (Reversion)
+  // In mean reversion, price usually snaps back to the 50 SMA or previous High.
+  // We set a standard 3R target to let winners run.
+  const risk = currentClose - stopLoss;
+  let target = currentClose + (risk * 3);
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`Stochastic Dip in Uptrend: K/D Cross > SMA 200\`
   };
 }
 return null;
