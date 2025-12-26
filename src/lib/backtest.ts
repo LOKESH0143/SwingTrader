@@ -206,12 +206,18 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
   }
 
   // Calculate Metrics
+  // We return ALL trades (including open ones if we wanted, but standard backtest usually reports closed)
+  // The user issue is that "Total Trades" in UI (metrics.totalTrades) != "All Trades" list length.
+  // In the UI, we accumulate metrics.totalTrades.
+  // But we also push ALL closed trades to sStats.allTrades.
+  
+  // If metrics.totalTrades is derived from closedTrades.length, they should match.
+  // UNLESS, the loop in Tournament.tsx is doing something weird.
+  
+  // Let's ensure we are consistent.
   const closedTrades = trades.filter(t => t.status === 'CLOSED');
   const wins = closedTrades.filter(t => t.pnl > 0).length;
   const totalPnl = closedTrades.reduce((acc, t) => acc + t.pnl, 0);
-  
-  // Max Drawdown calculation (simplified)
-  // Ideally this is calculated on a running equity curve
   
   return {
     strategyId: strategy.id,
@@ -221,8 +227,8 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
       totalTrades: closedTrades.length,
       winRate: closedTrades.length > 0 ? (wins / closedTrades.length) * 100 : 0,
       netProfit: totalPnl,
-      maxDrawdown: 0, // TODO: Implement proper DD calc
-      profitFactor: 0 // TODO: Implement PF
+      maxDrawdown: 0, 
+      profitFactor: 0 
     }
   };
 }

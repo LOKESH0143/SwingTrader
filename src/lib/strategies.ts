@@ -132,6 +132,51 @@ return null;
     `
   },
   {
+    id: 'vp-trend',
+    name: 'Volume Profile Trend',
+    description: 'Buys when price breaks out above Value Area High (VAH) in an uptrend. Uses POC as support.',
+    parameters: { lookback: 50, buckets: 24, defaultRiskPct: 0.05 },
+    code: `
+// Volume Profile Trend
+const vp = indicators.getVolumeProfile(data, params.lookback, params.buckets);
+if (!vp) return null;
+
+const current = data[data.length - 1];
+const prev = data[data.length - 2];
+const sma50 = indicators.sma(data, 50);
+const currentTrend = sma50[sma50.length - 1];
+
+// 1. Trend Filter
+const isUptrend = current.close > currentTrend;
+
+// 2. VAH Breakout
+// Price crosses above Value Area High
+const isBreakout = prev.close < vp.vah && current.close > vp.vah;
+
+if (isBreakout && isUptrend) {
+  // Stop Loss: POC (Point of Control)
+  // If price falls back below the "fair value" (POC), the breakout failed.
+  let stopLoss = vp.poc;
+  
+  // Safety: If POC is too close or above price (shouldn't happen on breakout), use standard stop
+  if (stopLoss >= current.close || (current.close - stopLoss)/current.close < 0.02) {
+     stopLoss = current.close * 0.95;
+  }
+
+  const risk = current.close - stopLoss;
+  let target = current.close + (risk * 2.5);
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`VP Breakout: Price > VAH (\${vp.vah.toFixed(2)}). SL at POC (\${vp.poc.toFixed(2)})\`
+  };
+}
+return null;
+    `
+  },
+  {
     id: 'breakout-vol',
     name: 'Volume Breakout (Volume Profile)',
     description: 'Buys when price breaks 20-day high with 2x volume AND clears the Value Area High (VAH).',

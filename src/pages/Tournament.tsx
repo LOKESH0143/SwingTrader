@@ -354,6 +354,7 @@ export function Tournament() {
                                   </thead>
                                   <tbody>
                                     {res.allTrades
+                                      .filter(t => t.pnlPercent > 0)
                                       .sort((a, b) => b.pnlPercent - a.pnlPercent)
                                       .slice(0, 10)
                                       .map((t, i) => (
@@ -384,6 +385,7 @@ export function Tournament() {
                                   </thead>
                                   <tbody>
                                     {res.allTrades
+                                      .filter(t => t.pnlPercent <= 0)
                                       .sort((a, b) => a.pnlPercent - b.pnlPercent)
                                       .slice(0, 10)
                                       .map((t, i) => (
