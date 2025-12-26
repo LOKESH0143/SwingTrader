@@ -1,7 +1,16 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 import { Candle } from './types';
 
-const db = new Database('data/market_data.db');
+const dbPath = path.resolve('data/market_data.db');
+const dbDir = path.dirname(dbPath);
+
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new Database(dbPath);
 
 // Initialize DB
 db.exec(`
