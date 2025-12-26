@@ -1,11 +1,27 @@
-import React, { useState } from 'react';
-import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter, Calendar, X } from 'lucide-react';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
 import { STOCK_UNIVERSES, StockUniverse } from '../lib/stockUniverses';
 import { PREBUILT_STRATEGIES } from '../lib/strategies';
 import { fetchHistory } from '../services/api';
 import { runBacktest, TradeFilters } from '../lib/backtest';
 import { cn } from '../lib/utils';
+import { TradeChart } from '../components/TradeChart';
+import { Candle } from '../lib/types';
+
+interface TradeDetails {
+  symbol: string;
+  entryDate: string;
+  entryPrice: number;
+  exitDate?: string;
+  exitPrice?: number;
+  stopLoss: number;
+  target: number;
+  type: 'LONG' | 'SHORT';
+  pnlPercent: number;
+  mfe?: number;
+  mae?: number;
+}
 
 interface StrategyPerformance {
   strategyId: string;
@@ -15,8 +31,13 @@ interface StrategyPerformance {
   totalPnL: number; // Sum of PnL %
   bestSymbol: string;
   bestSymbolPnL: number;
-  allTrades: { symbol: string; pnl: number; pnlPercent: number; date: string; mfe?: number; mae?: number }[];
+  allTrades: TradeDetails[];
 }
+
+
+import { analyzeTournamentResults, StrategyAnalysisInput } from '../services/ai';
+import { Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 export function Tournament() {
   const [running, setRunning] = useState(false);
@@ -25,6 +46,43 @@ export function Tournament() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_100');
   
+  // Trade Inspector State
+  const [selectedTrade, setSelectedTrade] = useState<TradeDetails | null>(null);
+  const [tradeData, setTradeData] = useState<Candle[]>([]);
+  const [loadingTrade, setLoadingTrade] = useState(false);
+
+  // AI Analysis State
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<string | null>(null);
+
+  const handleAIAnalysis = async () => {
+    if (results.length === 0) return;
+    
+    setAnalyzing(true);
+    setAnalysis(null);
+
+    // Prepare data for AI
+    const aiInput: StrategyAnalysisInput[] = results.map(r => {
+      const closedTrades = r.allTrades.filter(t => t.exitDate); // Only closed trades have MFE/MAE usually
+      const avgMfe = closedTrades.reduce((sum, t) => sum + (t.mfe || 0), 0) / (closedTrades.length || 1);
+      const avgMae = closedTrades.reduce((sum, t) => sum + (t.mae || 0), 0) / (closedTrades.length || 1);
+      
+      return {
+        strategyName: r.strategyName,
+        winRate: (r.wins / (r.totalTrades || 1)) * 100,
+        netProfit: r.totalPnL,
+        totalTrades: r.totalTrades,
+        avgMfe,
+        avgMae,
+        bestSymbol: r.bestSymbol
+      };
+    });
+
+    const report = await analyzeTournamentResults(aiInput);
+    setAnalysis(report);
+    setAnalyzing(false);
+  };
+
   // Filters
   const [filters, setFilters] = useState<TradeFilters>({
     minRiskReward: 0,
@@ -35,10 +93,58 @@ export function Tournament() {
   });
   const [showFilters, setShowFilters] = useState(false);
 
+  // Fetch data for selected trade
+  useEffect(() => {
+    if (selectedTrade) {
+      setLoadingTrade(true);
+      // Fetch 5y to ensure we have enough context
+      fetchHistory(selectedTrade.symbol, '5y')
+        .then(data => {
+          setTradeData(data);
+          setLoadingTrade(false);
+        })
+        .catch(err => {
+          console.error("Failed to fetch trade data", err);
+          setLoadingTrade(false);
+        });
+    }
+  }, [selectedTrade]);
+
+  // Execution Details State
+  const [executionDetails, setExecutionDetails] = useState<{
+    universeName: string;
+    symbolCount: number;
+    startDate: string;
+    endDate: string;
+    period: string;
+  } | null>(null);
+
   const runTournament = async () => {
     setRunning(true);
     setResults([]);
     setProgress(0);
+    setExecutionDetails(null);
+
+    const universeName = STOCK_UNIVERSES[selectedUniverse].name;
+    const universeSymbols = STOCK_UNIVERSES[selectedUniverse].symbols;
+    const totalSymbols = universeSymbols.length;
+    
+    // Determine effective date range
+    // If filters are set, use them. If not, we default to '1y' or '5y' logic
+    const period = (filters.startDate || filters.endDate) ? '5y' : '1y';
+    
+    // We can't know the exact start/end date of the data until we fetch it, 
+    // but we can show what the user requested or the default period.
+    const effectiveStartDate = filters.startDate || `(Default: Last ${period})`;
+    const effectiveEndDate = filters.endDate || '(Default: Today)';
+
+    setExecutionDetails({
+      universeName,
+      symbolCount: totalSymbols,
+      startDate: effectiveStartDate,
+      endDate: effectiveEndDate,
+      period
+    });
 
     const stats: Record<string, StrategyPerformance> = {};
     
@@ -56,9 +162,6 @@ export function Tournament() {
       };
     });
 
-    const universeSymbols = STOCK_UNIVERSES[selectedUniverse].symbols;
-    const totalSymbols = universeSymbols.length;
-    
     // Process in chunks
     const chunkSize = 5;
     for (let i = 0; i < totalSymbols; i += chunkSize) {
@@ -100,11 +203,16 @@ export function Tournament() {
             result.trades.forEach(t => {
               sStats.allTrades.push({
                 symbol,
-                pnl: t.pnl,
+                entryDate: t.entryDate,
+                entryPrice: t.entryPrice,
+                exitDate: t.exitDate,
+                exitPrice: t.exitPrice,
+                stopLoss: t.stopLoss,
+                target: t.target,
+                type: t.type,
                 pnlPercent: t.pnlPercent,
-                date: t.entryDate,
-                mfe: t.mfe, // Pass MFE
-                mae: t.mae  // Pass MAE
+                mfe: t.mfe,
+                mae: t.mae
               });
             });
           });
@@ -122,7 +230,55 @@ export function Tournament() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto relative">
+      {/* Trade Inspector Modal */}
+      {selectedTrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">{selectedTrade.symbol} Trade Analysis</h3>
+                <p className={cn("text-sm font-medium", selectedTrade.pnlPercent > 0 ? "text-green-600" : "text-red-600")}>
+                  {selectedTrade.pnlPercent > 0 ? '+' : ''}{selectedTrade.pnlPercent.toFixed(2)}% Return
+                </p>
+              </div>
+              <button onClick={() => setSelectedTrade(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <X className="w-6 h-6 text-slate-500" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex-1 overflow-y-auto">
+              {loadingTrade ? (
+                <div className="h-[400px] flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                </div>
+              ) : (
+                <TradeChart data={tradeData} trade={selectedTrade} />
+              )}
+              
+              <div className="mt-6 grid grid-cols-4 gap-4 text-sm">
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500 block mb-1">Entry Date</span>
+                  <span className="font-medium">{new Date(selectedTrade.entryDate).toLocaleDateString()}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500 block mb-1">Entry Price</span>
+                  <span className="font-medium">{selectedTrade.entryPrice.toFixed(2)}</span>
+                </div>
+                 <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500 block mb-1">Exit Date</span>
+                  <span className="font-medium">{selectedTrade.exitDate ? new Date(selectedTrade.exitDate).toLocaleDateString() : '-'}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500 block mb-1">Exit Price</span>
+                  <span className="font-medium">{selectedTrade.exitPrice?.toFixed(2) || '-'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Strategy Tournament v2.1</h1>
@@ -179,6 +335,70 @@ export function Tournament() {
           </button>
         </div>
       </div>
+
+      {/* Execution Details Panel */}
+      {executionDetails && (
+        <div className="mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-lg flex flex-wrap gap-6 text-sm text-indigo-900 items-center">
+          <div>
+            <span className="font-semibold text-indigo-700 block text-xs uppercase tracking-wider">Universe</span>
+            <span className="font-medium">{executionDetails.universeName} ({executionDetails.symbolCount} Symbols)</span>
+          </div>
+          <div>
+            <span className="font-semibold text-indigo-700 block text-xs uppercase tracking-wider">Date Range</span>
+            <span className="font-medium">{executionDetails.startDate} — {executionDetails.endDate}</span>
+          </div>
+          <div>
+            <span className="font-semibold text-indigo-700 block text-xs uppercase tracking-wider">Data Period</span>
+            <span className="font-medium">{executionDetails.period}</span>
+          </div>
+          <div className="ml-auto">
+             <button 
+               onClick={() => alert(`Symbols in ${executionDetails.universeName}:\n\n${STOCK_UNIVERSES[selectedUniverse].symbols.join(', ')}`)}
+               className="text-indigo-600 hover:text-indigo-800 underline text-xs font-medium"
+             >
+               View Symbol List
+             </button>
+          </div>
+        </div>
+      )}
+
+      {/* AI Analysis Section */}
+      {results.length > 0 && (
+        <div className="mb-8">
+          <button
+            onClick={handleAIAnalysis}
+            disabled={analyzing}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-70"
+          >
+            {analyzing ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Analyzing Market Data...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5" />
+                Ask AI Analyst
+              </>
+            )}
+          </button>
+
+
+
+          {analysis && (
+            <div className="mt-6 p-6 bg-white rounded-xl border border-indigo-100 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-violet-500 to-indigo-500"></div>
+              <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-600" />
+                AI Strategy Report
+              </h3>
+              <div className="prose prose-indigo max-w-none text-slate-700">
+                <ReactMarkdown>{analysis}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filter Panel */}
       {showFilters && (
@@ -358,9 +578,13 @@ export function Tournament() {
                                       .sort((a, b) => b.pnlPercent - a.pnlPercent)
                                       .slice(0, 10)
                                       .map((t, i) => (
-                                        <tr key={i} className="border-b border-slate-100 last:border-0">
+                                        <tr 
+                                          key={i} 
+                                          className="border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 transition-colors"
+                                          onClick={() => setSelectedTrade(t)}
+                                        >
                                           <td className="px-4 py-2 font-medium">{t.symbol}</td>
-                                          <td className="px-4 py-2 text-slate-500">{new Date(t.date).toLocaleDateString()}</td>
+                                          <td className="px-4 py-2 text-slate-500">{new Date(t.entryDate).toLocaleDateString()}</td>
                                           <td className="px-4 py-2 text-right text-green-600 font-bold">+{t.pnlPercent.toFixed(2)}%</td>
                                           <td className="px-4 py-2 text-right text-slate-500">{t.mfe?.toFixed(1)}%</td>
                                         </tr>
@@ -389,9 +613,13 @@ export function Tournament() {
                                       .sort((a, b) => a.pnlPercent - b.pnlPercent)
                                       .slice(0, 10)
                                       .map((t, i) => (
-                                        <tr key={i} className="border-b border-slate-100 last:border-0">
+                                        <tr 
+                                          key={i} 
+                                          className="border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 transition-colors"
+                                          onClick={() => setSelectedTrade(t)}
+                                        >
                                           <td className="px-4 py-2 font-medium">{t.symbol}</td>
-                                          <td className="px-4 py-2 text-slate-500">{new Date(t.date).toLocaleDateString()}</td>
+                                          <td className="px-4 py-2 text-slate-500">{new Date(t.entryDate).toLocaleDateString()}</td>
                                           <td className="px-4 py-2 text-right text-red-600 font-bold">{t.pnlPercent.toFixed(2)}%</td>
                                           <td className="px-4 py-2 text-right text-slate-500">{t.mae?.toFixed(1)}%</td>
                                         </tr>

@@ -1,10 +1,30 @@
 import { Strategy } from './types';
 
+export function loadCustomStrategies(): Strategy[] {
+  try {
+    const stored = localStorage.getItem('custom_strategies');
+    return stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    console.error("Failed to load custom strategies", e);
+    return [];
+  }
+}
+
+export function saveCustomStrategy(strategy: Strategy) {
+  try {
+    const existing = loadCustomStrategies();
+    const updated = [...existing, strategy];
+    localStorage.setItem('custom_strategies', JSON.stringify(updated));
+  } catch (e) {
+    console.error("Failed to save custom strategy", e);
+  }
+}
+
 export const PREBUILT_STRATEGIES: Strategy[] = [
   {
     id: 'golden-cross',
-    name: 'Golden Cross (Optimized)',
-    description: 'Buys when SMA 50 > SMA 200 with RSI, Volume, and Trend Slope filters. Uses ATR for stops.',
+    name: 'Golden Cross (Optimized v2)',
+    description: 'Buys when SMA 50 > SMA 200 with RSI, Volume, and Trend Slope filters. Uses Advanced S&R for stops.',
     parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
     code: `
 // Optimized Golden Cross (Trend + Momentum + Volume)
@@ -46,14 +66,13 @@ if (isGoldenCross) {
   // Combine all conditions
   if (isHealthyMomentum && isTrendFlatOrUp && isVolumeSupported) {
     
-    // Find Support & Resistance
-    const { supports, resistances } = indicators.findSupportResistance(data, 20); // Increased lookback to 20 for better levels
+    // Find Support & Resistance (Advanced v2)
+    const { supports, resistances } = indicators.findSupportResistance(data, 30); // Increased lookback for v2
     
-    // Stop Loss: Nearest Support
+    // Stop Loss: Nearest Strong Support
     let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
     
     // Fallback: Use ATR based stop if support is too far or missing
-    // (ATR is better than fixed % because it adapts to volatility)
     const atr = indicators.atr(data, 14);
     const currentAtr = atr[atr.length - 1];
     
@@ -61,7 +80,7 @@ if (isGoldenCross) {
        stopLoss = currentClose - (currentAtr * 2); // 2 ATR Stop
     }
 
-    // Target: Nearest Resistance
+    // Target: Nearest Strong Resistance
     let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
     
     if (!target) {
@@ -73,7 +92,7 @@ if (isGoldenCross) {
       signal: 'BUY',
       stopLoss: stopLoss,
       target: target,
-      reason: \`Golden Cross Optimized: RSI \${currentRsi.toFixed(1)} + Rising 200SMA + Vol Support\`
+      reason: \`Golden Cross v2: RSI \${currentRsi.toFixed(1)} + Rising 200SMA + Vol Support\`
     };
   }
 }
@@ -487,49 +506,58 @@ return null;
   },
   {
     id: 'bb-trend-rider',
-    name: 'Bollinger Trend Rider (Simple + Trend Filter)',
-    description: 'Buys when price breaks Upper Band while above SMA 50. Uses SMA 20 as dynamic stop.',
+    name: 'Bollinger Trend Rider (Optimized)',
+    description: 'Buys on a pullback to the Middle Band (SMA 20) in a strong uptrend (Above SMA 50 + ADX > 25). Avoids buying extended tops.',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
     code: `
-// Bollinger Trend Rider (Simple + Trend Filter)
+// Bollinger Trend Rider (Optimized: Pullback + Momentum)
 const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
 const sma50 = indicators.sma(data, 50);
+const adx = indicators.adx(data, 14);
 
 const i = data.length - 1;
 const currentClose = data[i].close;
+const currentLow = data[i].low;
+const currentOpen = data[i].open;
 const prevClose = data[i-1].close;
 
-const currentUpper = upper[i];
-const prevUpper = upper[i-1];
+const currentMiddle = middle[i];
 const currentTrend = sma50[sma50.length - 1];
+const currentAdx = adx[adx.length - 1];
 
-// 1. The Simple Breakout (Cross over Upper Band)
-// We go back to the raw signal: Price crossed the line.
-const isBreakout = prevClose < prevUpper && currentClose > currentUpper;
+// 1. Trend Filter: Strong Uptrend
+// Price above SMA 50 AND ADX > 25 (Trend Strength)
+const isUptrend = currentClose > currentTrend && currentAdx > 25;
 
-// 2. The ONLY Filter: Trend Alignment
-// If price is below 50 SMA, the stock is structurally weak. Breakouts here fail often.
-// If price is above 50 SMA, the "Wind is at your back."
-const isUptrend = currentClose > currentTrend;
+// 2. Pullback Condition: "Buy the Dip"
+// Instead of buying the breakout (which fails often as per MAE analysis),
+// we buy when price touches or dips near the Middle Band (SMA 20) and bounces.
+// Logic: Low of candle touched SMA 20, but closed GREEN (Bounce).
+const touchedMiddle = currentLow <= currentMiddle * 1.01; // Within 1% of SMA 20
+const isGreenCandle = currentClose > currentOpen;
+const isBounce = touchedMiddle && isGreenCandle;
 
-if (isBreakout && isUptrend) {
+if (isUptrend && isBounce) {
   
-  // Stop Loss: The Middle Band (20 SMA)
-  // Why? In a strong trend, price 'surfs' the upper band and respects the 20 SMA.
-  // "Nearest Support" can sometimes be too far away (10%+ risk).
-  // SMA 20 is dynamic and trails the price up.
-  let stopLoss = middle[i];
+  // Stop Loss: Below the Low of the bounce candle (Tight Risk)
+  // If it breaks the bounce low, the trend might be changing.
+  let stopLoss = Math.min(data[i].low, currentMiddle * 0.98);
   
-  // Target: Momentum (Let it ride)
-  // We use a 3R target, but ideally, you would trail the stop using the 20 SMA.
+  // Target: The Upper Band (Mean Reversion to the upside)
+  // We aim for the price to return to the top of the channel.
   const risk = currentClose - stopLoss;
-  let target = currentClose + (risk * 3);
+  let target = upper[i];
+  
+  // Ensure minimum 2R
+  if ((target - currentClose) < (risk * 2)) {
+      target = currentClose + (risk * 2.5);
+  }
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`Bollinger Trend Rider: Breakout > SMA 50. Stop: SMA 20\`
+    reason: \`BB Trend Rider: Bounce off SMA 20 in Uptrend (ADX \${currentAdx.toFixed(0)})\`
   };
 }
 return null;

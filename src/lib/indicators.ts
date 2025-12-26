@@ -497,34 +497,69 @@ function wilderSmooth(data: number[], period: number): number[] {
   return smoothed;
 }
 
-// Find Support and Resistance levels based on Swing Highs and Lows
+// Advanced Support and Resistance with Clustering and Strength
 export function findSupportResistance(data: Candle[], lookback: number = 20) {
-  const levels: { price: number; type: 'SUPPORT' | 'RESISTANCE' }[] = [];
+  const rawLevels: { price: number; type: 'SUPPORT' | 'RESISTANCE'; strength: number; dateIndex: number }[] = [];
   
-  // We need at least lookback * 2 + 1 candles to find a pivot in the middle
-  if (data.length < lookback * 2 + 1) return { supports: [], resistances: [] };
-
+  // 1. Identify Pivot Points (Fractals)
   for (let i = lookback; i < data.length - lookback; i++) {
     const current = data[i];
     const leftSide = data.slice(i - lookback, i);
     const rightSide = data.slice(i + 1, i + lookback + 1);
 
-    // Check for Swing High (Resistance)
+    // Swing High
     const isHigh = leftSide.every(c => c.high <= current.high) && rightSide.every(c => c.high < current.high);
     if (isHigh) {
-      levels.push({ price: current.high, type: 'RESISTANCE' });
+      rawLevels.push({ price: current.high, type: 'RESISTANCE', strength: 1, dateIndex: i });
     }
 
-    // Check for Swing Low (Support)
+    // Swing Low
     const isLow = leftSide.every(c => c.low >= current.low) && rightSide.every(c => c.low > current.low);
     if (isLow) {
-      levels.push({ price: current.low, type: 'SUPPORT' });
+      rawLevels.push({ price: current.low, type: 'SUPPORT', strength: 1, dateIndex: i });
     }
   }
 
-  // Sort levels
-  const supports = levels.filter(l => l.type === 'SUPPORT').map(l => l.price).sort((a, b) => b - a); // Descending (nearest first)
-  const resistances = levels.filter(l => l.type === 'RESISTANCE').map(l => l.price).sort((a, b) => a - b); // Ascending (nearest first)
+  // 2. Cluster Levels (Merge nearby levels)
+  // If levels are within 1% of each other, merge them and increase strength
+  const threshold = 0.01; // 1%
+  const clusters: { price: number; type: 'SUPPORT' | 'RESISTANCE'; strength: number }[] = [];
+
+  // Sort by price to make clustering easier
+  rawLevels.sort((a, b) => a.price - b.price);
+
+  for (const level of rawLevels) {
+    let merged = false;
+    for (const cluster of clusters) {
+      // Check if close enough and same type
+      if (Math.abs(cluster.price - level.price) / cluster.price <= threshold && cluster.type === level.type) {
+        // Weighted average for new price
+        cluster.price = (cluster.price * cluster.strength + level.price) / (cluster.strength + 1);
+        cluster.strength += 1;
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      clusters.push({ price: level.price, type: level.type, strength: 1 });
+    }
+  }
+
+  // 3. Filter Weak Levels
+  // Only keep levels that have been tested at least twice (strength >= 2)
+  // Or very recent significant pivots (last 50 candles) even if strength is 1
+  const currentIdx = data.length - 1;
+  const significantLevels = clusters.filter(l => l.strength >= 2);
+
+  // Add recent significant pivots that might not have been clustered yet
+  const recentPivots = rawLevels
+    .filter(l => (currentIdx - l.dateIndex) < 50 && !significantLevels.some(sl => Math.abs(sl.price - l.price) / sl.price < threshold))
+    .map(l => ({ price: l.price, type: l.type, strength: 1 }));
+
+  const finalLevels = [...significantLevels, ...recentPivots];
+
+  const supports = finalLevels.filter(l => l.type === 'SUPPORT').map(l => l.price).sort((a, b) => b - a);
+  const resistances = finalLevels.filter(l => l.type === 'RESISTANCE').map(l => l.price).sort((a, b) => a - b);
 
   return { supports, resistances };
 }

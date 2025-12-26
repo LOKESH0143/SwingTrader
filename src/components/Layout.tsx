@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, LineChart, Settings, ListTodo, History, BrainCircuit, Book, Trophy } from 'lucide-react';
+import { LayoutDashboard, LineChart, Settings, ListTodo, History, BrainCircuit, Book, Trophy, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export function Layout() {
@@ -21,6 +21,7 @@ export function Layout() {
         <nav className="flex-1 p-4 space-y-2">
           <NavItem to="/" icon={<ListTodo />} label="Requirements" />
           <NavItem to="/dashboard" icon={<LayoutDashboard />} label="Dashboard" />
+          <NavItem to="/builder" icon={<Sparkles />} label="AI Architect" />
           <NavItem to="/strategies" icon={<BrainCircuit />} label="Strategies" />
           <NavItem to="/backtest" icon={<History />} label="Backtest" />
           <NavItem to="/tournament" icon={<Trophy />} label="Tournament" />
@@ -62,9 +63,9 @@ function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label
         )
       }
     >
-      {React.cloneElement(icon as React.ReactElement, {
-        className: "w-5 h-5 transition-colors"
-      })}
+      <span className="w-5 h-5 flex items-center justify-center">
+        {icon}
+      </span>
       <span className="font-medium">{label}</span>
     </NavLink>
   );

@@ -31,9 +31,24 @@ async function startServer() {
       if (interval === '1d') {
         const cachedData = getCachedCandles(symbol, 365);
         if (cachedData && cachedData.length > 0) {
-          console.log(`[Cache] Hit for ${symbol}`);
-          res.json(cachedData);
-          return;
+          // Check if cached data covers the requested range
+          const cachedStart = new Date(cachedData[0].date).getTime();
+          let requiredStart = new Date();
+          
+          if (range === '5y') requiredStart.setFullYear(requiredStart.getFullYear() - 5);
+          else if (range === '2y') requiredStart.setFullYear(requiredStart.getFullYear() - 2);
+          else if (range === '1y') requiredStart.setFullYear(requiredStart.getFullYear() - 1);
+          else requiredStart.setMonth(requiredStart.getMonth() - 6);
+
+          // Allow a small buffer (e.g., 10 days) for holidays/weekends
+          // If cached data starts BEFORE or roughly AT the required start date, it's good.
+          if (cachedStart <= requiredStart.getTime() + (10 * 24 * 60 * 60 * 1000)) {
+            console.log(`[Cache] Hit for ${symbol} (Range: ${range})`);
+            res.json(cachedData);
+            return;
+          } else {
+            console.log(`[Cache] Miss for ${symbol}: Insufficient history. Have ${cachedData[0].date}, Need ${requiredStart.toISOString().split('T')[0]}`);
+          }
         }
       }
 

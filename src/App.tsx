@@ -8,6 +8,8 @@ import { Settings } from './pages/Settings';
 import { About } from './pages/About';
 import { Tournament } from './pages/Tournament';
 
+import { StrategyBuilder } from './pages/StrategyBuilder';
+
 export default function App() {
   return (
     <Routes>
@@ -15,6 +17,7 @@ export default function App() {
         <Route index element={<Requirements />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="strategies" element={<Strategies />} />
+        <Route path="builder" element={<StrategyBuilder />} />
         <Route path="backtest" element={<Backtest />} />
         <Route path="tournament" element={<Tournament />} />
         <Route path="settings" element={<Settings />} />

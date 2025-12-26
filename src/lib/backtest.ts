@@ -65,18 +65,21 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
 
   if (filters?.startDate) {
     const startFilter = new Date(filters.startDate).getTime();
-    // console.log(`[Backtest] Start Filter: ${filters.startDate} (${startFilter})`);
-    
     const foundIndex = data.findIndex(c => new Date(c.date).getTime() >= startFilter);
     
     if (foundIndex === -1) {
-       // Start date is after all available data -> Run nothing
-       // console.log('[Backtest] Start date is after all data');
        startIndex = data.length + 1; 
     } else if (foundIndex > warmupPeriod) {
        startIndex = foundIndex;
     }
-    // console.log(`[Backtest] Start Index: ${startIndex} (Date: ${data[startIndex]?.date})`);
+  } else {
+    // Default Behavior: If NO start date filter is provided, default to last 1 year (approx 252 trading days)
+    // This prevents running backtest on the entire 5y history when user just wants a quick check.
+    // However, we must ensure we have enough data for warmup.
+    const oneYearAgoIndex = data.length - 252;
+    if (oneYearAgoIndex > warmupPeriod) {
+        startIndex = oneYearAgoIndex;
+    }
   }
 
   let endFilterTime = 0;
@@ -113,9 +116,13 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
       if (candle.low <= tradeSL) {
         exitPrice = tradeSL;
         exitReason = 'Stop Loss';
+        // Ensure minPrice reflects the stop loss hit if it gapped down
+        openTrade.minPrice = Math.min(openTrade.minPrice, exitPrice);
       } else if (candle.high >= tradeTP) {
         exitPrice = tradeTP;
         exitReason = 'Target Hit';
+        // Ensure maxPrice reflects the target hit if it gapped up
+        openTrade.maxPrice = Math.max(openTrade.maxPrice, exitPrice);
       }
 
       if (exitPrice > 0) {
@@ -126,6 +133,11 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
         openTrade.pnlPercent = ((exitPrice - openTrade.entryPrice) / openTrade.entryPrice) * 100;
         
         // Calculate Final MFE/MAE
+        // MFE: Max Favorable Excursion (Highest High - Entry) / Entry
+        // MAE: Max Adverse Excursion (Entry - Lowest Low) / Entry (Usually negative or positive depending on convention, but let's keep it as "Drawdown %")
+        // Convention: MAE is typically negative to show drawdown, but user asked for "percentage price moved against the trade".
+        // Let's store MAE as a negative number to indicate "Adverse".
+        
         openTrade.mfe = ((openTrade.maxPrice - openTrade.entryPrice) / openTrade.entryPrice) * 100;
         openTrade.mae = ((openTrade.minPrice - openTrade.entryPrice) / openTrade.entryPrice) * 100;
 
