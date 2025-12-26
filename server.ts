@@ -2,10 +2,12 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import yahooFinance from 'yahoo-finance2';
 import { getCachedCandles, saveCandles } from './src/lib/db';
+import http from 'http';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const server = http.createServer(app);
 
   // Middleware to parse JSON
   app.use(express.json());
@@ -85,13 +87,18 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: {
+          server: server
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

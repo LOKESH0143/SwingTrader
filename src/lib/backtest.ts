@@ -65,31 +65,37 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
 
   if (filters?.startDate) {
     const startFilter = new Date(filters.startDate).getTime();
+    // console.log(`[Backtest] Start Filter: ${filters.startDate} (${startFilter})`);
+    
     const foundIndex = data.findIndex(c => new Date(c.date).getTime() >= startFilter);
     
     if (foundIndex === -1) {
        // Start date is after all available data -> Run nothing
+       // console.log('[Backtest] Start date is after all data');
        startIndex = data.length + 1; 
     } else if (foundIndex > warmupPeriod) {
        startIndex = foundIndex;
     }
+    // console.log(`[Backtest] Start Index: ${startIndex} (Date: ${data[startIndex]?.date})`);
   }
 
+  let endFilterTime = 0;
   if (filters?.endDate) {
-    const endFilter = new Date(filters.endDate).getTime();
-    // We want to include the end date, so we look for the first candle AFTER the end date and stop before it
-    // Or just check inside the loop
+    // Set to end of the day (23:59:59.999)
+    const endDate = new Date(filters.endDate);
+    endDate.setHours(23, 59, 59, 999);
+    endFilterTime = endDate.getTime();
+    // console.log(`[Backtest] End Filter: ${filters.endDate} (${endFilterTime})`);
   }
 
   for (let i = startIndex; i <= endIndex; i++) {
     const currentData = data.slice(0, i + 1);
     const candle = data[i];
-    const candleDate = new Date(candle.date).getTime();
-
-    // Check End Date Filter
-    if (filters?.endDate) {
-        const endFilter = new Date(filters.endDate).getTime();
-        if (candleDate > endFilter) break;
+    
+    // Check End Date Filter (Optimized)
+    if (endFilterTime > 0) {
+        const candleDate = new Date(candle.date).getTime();
+        if (candleDate > endFilterTime) break;
     }
 
     // Check exit conditions for open trade

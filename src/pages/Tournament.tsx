@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter, Calendar } from 'lucide-react';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
+import { STOCK_UNIVERSES, StockUniverse } from '../lib/stockUniverses';
 import { PREBUILT_STRATEGIES } from '../lib/strategies';
 import { fetchHistory } from '../services/api';
 import { runBacktest, TradeFilters } from '../lib/backtest';
@@ -22,6 +23,7 @@ export function Tournament() {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<StrategyPerformance[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_100');
   
   // Filters
   const [filters, setFilters] = useState<TradeFilters>({
@@ -54,15 +56,13 @@ export function Tournament() {
       };
     });
 
-    // Use Top 100 symbols (Nifty 100) for the Tournament
-    // Using all 500 takes too long and includes low-cap volatility that skews results
-    const tournamentSymbols = NIFTY_500_SYMBOLS.slice(0, 100);
-    const totalSymbols = tournamentSymbols.length;
+    const universeSymbols = STOCK_UNIVERSES[selectedUniverse].symbols;
+    const totalSymbols = universeSymbols.length;
     
     // Process in chunks
     const chunkSize = 5;
     for (let i = 0; i < totalSymbols; i += chunkSize) {
-      const chunk = tournamentSymbols.slice(i, i + chunkSize);
+      const chunk = universeSymbols.slice(i, i + chunkSize);
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
@@ -127,11 +127,24 @@ export function Tournament() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Strategy Tournament v2.1</h1>
           <p className="text-slate-600 mt-2">
-            Battle of the bots! Run all strategies against Nifty 100 stocks (1 Year) to find the champion.
+            Battle of the bots! Run all strategies against <span className="font-semibold text-indigo-600">{STOCK_UNIVERSES[selectedUniverse].name}</span> to find the champion.
           </p>
         </div>
         
         <div className="flex items-center gap-3">
+          <div className="relative">
+            <select
+              value={selectedUniverse}
+              onChange={(e) => setSelectedUniverse(e.target.value as StockUniverse)}
+              className="appearance-none bg-white border border-slate-300 text-slate-700 py-3 pl-4 pr-10 rounded-lg font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {Object.entries(STOCK_UNIVERSES).map(([key, value]) => (
+                <option key={key} value={key}>{value.name} ({value.symbols.length})</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-3.5 w-5 h-5 text-slate-400 pointer-events-none" />
+          </div>
+
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={cn(
