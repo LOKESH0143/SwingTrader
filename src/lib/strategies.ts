@@ -20,14 +20,83 @@ export function saveCustomStrategy(strategy: Strategy) {
   }
 }
 
+export function saveStrategyScore(id: string, score: { totalPnL: number; winRate: number }) {
+  try {
+    const scores = JSON.parse(localStorage.getItem('strategy_scores') || '{}');
+    const currentBest = scores[id];
+    
+    // Only update if better (simple logic: higher PnL)
+    if (!currentBest || score.totalPnL > currentBest.totalPnL) {
+      scores[id] = { ...score, date: new Date().toISOString() };
+      localStorage.setItem('strategy_scores', JSON.stringify(scores));
+    }
+  } catch (e) {
+    console.error("Failed to save strategy score", e);
+  }
+}
+
+export function getStrategyScore(id: string) {
+  try {
+    const scores = JSON.parse(localStorage.getItem('strategy_scores') || '{}');
+    return scores[id];
+  } catch (e) {
+    return null;
+  }
+}
+
 export const PREBUILT_STRATEGIES: Strategy[] = [
+  // --- GOLDEN CROSS ---
   {
-    id: 'golden-cross',
-    name: 'Golden Cross (Optimized v2)',
-    description: 'Buys when SMA 50 > SMA 200 with RSI, Volume, and Trend Slope filters. Uses Advanced S&R for stops.',
+    id: 'golden-cross-v1',
+    name: 'Golden Cross (v1: Standard)',
+    description: 'Classic Golden Cross (SMA 50 > SMA 200) with basic RSI filter. Uses ATR for stops.',
     parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
     code: `
-// Optimized Golden Cross (Trend + Momentum + Volume)
+// Golden Cross v1 (Standard)
+const fastSMA = indicators.sma(data, params.fastPeriod);
+const slowSMA = indicators.sma(data, params.slowPeriod);
+const rsi = indicators.rsi(data, 14);
+
+const i = data.length - 1;
+const currentFast = fastSMA[i];
+const currentSlow = slowSMA[i];
+const prevFast = fastSMA[i-1];
+const prevSlow = slowSMA[i-1];
+
+// 1. Crossover
+const isGoldenCross = prevFast < prevSlow && currentFast > currentSlow;
+
+if (isGoldenCross) {
+  const currentClose = data[i].close;
+  const currentRsi = rsi[i];
+  
+  // Basic RSI Filter
+  if (currentRsi > 50 && currentRsi < 70) {
+    
+    // Simple ATR Stop
+    const atr = indicators.atr(data, 14);
+    const currentAtr = atr[atr.length - 1];
+    const stopLoss = currentClose - (currentAtr * 2);
+    const target = currentClose + (currentAtr * 4); // 2R
+
+    return {
+      signal: 'BUY',
+      stopLoss: stopLoss,
+      target: target,
+      reason: \`Golden Cross v1: Standard Cross\`
+    };
+  }
+}
+return null;
+    `
+  },
+  {
+    id: 'golden-cross-v2',
+    name: 'Golden Cross (v2: Advanced S&R)',
+    description: 'Optimized Golden Cross with Advanced Support/Resistance logic. Relaxed filters to capture more moves.',
+    parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
+    code: `
+// Optimized Golden Cross (Trend + Advanced S&R)
 const fastSMA = indicators.sma(data, params.fastPeriod); // 50
 const slowSMA = indicators.sma(data, params.slowPeriod); // 200
 const rsi = indicators.rsi(data, 14);
@@ -45,29 +114,22 @@ const isGoldenCross = prevFast < prevSlow && currentFast > currentSlow;
 if (isGoldenCross) {
   const currentClose = data[i].close;
   
-  // --- IMPROVEMENT 1: RSI Filter ---
-  // Avoid buying if RSI is already overbought (>70). 
-  // We want momentum (>50) but plenty of room to run.
+  // --- Filter 1: RSI Check ---
+  // Ensure we aren't buying a massively overextended move (>80)
+  // But allow strong momentum (>70 is okay for breakouts)
   const currentRsi = rsi[i];
-  const isHealthyMomentum = currentRsi > 50 && currentRsi < 70;
+  const isNotOverbought = currentRsi < 80;
 
-  // --- IMPROVEMENT 2: 200 SMA Slope ---
-  // Ensure the long-term trend isn't pointing down.
-  // We check if the 200 SMA is higher than it was 5 days ago.
-  const slowSma5DaysAgo = slowSMA[i-5];
-  const isTrendFlatOrUp = currentSlow >= slowSma5DaysAgo;
-
-  // --- IMPROVEMENT 3: Volume Confirmation ---
-  // Check if current volume is at least 10% higher than the 20-day average
+  // --- Filter 2: Volume Sanity Check ---
+  // Just ensure volume isn't dead (at least 50% of average)
   const recentVols = data.slice(-21, -1).map(c => c.volume);
   const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
-  const isVolumeSupported = data[i].volume > (avgVol * 1.1);
+  const isAlive = data[i].volume > (avgVol * 0.5);
 
-  // Combine all conditions
-  if (isHealthyMomentum && isTrendFlatOrUp && isVolumeSupported) {
+  if (isNotOverbought && isAlive) {
     
     // Find Support & Resistance (Advanced v2)
-    const { supports, resistances } = indicators.findSupportResistance(data, 30); // Increased lookback for v2
+    const { supports, resistances } = indicators.findSupportResistance(data, 30);
     
     // Stop Loss: Nearest Strong Support
     let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
@@ -76,23 +138,25 @@ if (isGoldenCross) {
     const atr = indicators.atr(data, 14);
     const currentAtr = atr[atr.length - 1];
     
-    if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.08) {
-       stopLoss = currentClose - (currentAtr * 2); // 2 ATR Stop
+    // If no support found, or support is > 10% away (too risky), use 3x ATR trailing stop equivalent
+    if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.10) {
+       stopLoss = currentClose - (currentAtr * 3); 
     }
 
     // Target: Nearest Strong Resistance
     let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
     
-    if (!target) {
-       const risk = currentClose - stopLoss;
-       target = currentClose + (risk * 2); // 2R Target
+    // If no resistance or it's too close (< 1.5R), aim for 3R open space
+    const risk = currentClose - stopLoss;
+    if (!target || (target - currentClose) < (risk * 1.5)) {
+       target = currentClose + (risk * 3); 
     }
 
     return {
       signal: 'BUY',
       stopLoss: stopLoss,
       target: target,
-      reason: \`Golden Cross v2: RSI \${currentRsi.toFixed(1)} + Rising 200SMA + Vol Support\`
+      reason: \`Golden Cross v2: S&R Stop \${stopLoss.toFixed(2)}\`
     };
   }
 }
@@ -190,6 +254,53 @@ if (isBreakout && isUptrend) {
     stopLoss: stopLoss,
     target: target,
     reason: \`VP Breakout: Price > VAH (\${vp.vah.toFixed(2)}). SL at POC (\${vp.poc.toFixed(2)})\`
+  };
+}
+return null;
+    `
+  },
+  {
+    id: 'vp-trend-v2',
+    name: 'Volume Profile Trend (Optimized v2)',
+    description: 'Volume Profile Breakout with Trailing Stop logic to capture larger moves and reduce drawdown.',
+    parameters: { lookback: 50, buckets: 24, defaultRiskPct: 0.05 },
+    code: `
+// Volume Profile Trend v2 (Trailing Stop)
+const vp = indicators.getVolumeProfile(data, params.lookback, params.buckets);
+if (!vp) return null;
+
+const current = data[data.length - 1];
+const prev = data[data.length - 2];
+const sma50 = indicators.sma(data, 50);
+const currentTrend = sma50[sma50.length - 1];
+
+// 1. Trend Filter
+const isUptrend = current.close > currentTrend;
+
+// 2. VAH Breakout
+const isBreakout = prev.close < vp.vah && current.close > vp.vah;
+
+if (isBreakout && isUptrend) {
+  // Stop Loss: POC (Point of Control)
+  let stopLoss = vp.poc;
+  
+  // Safety check
+  if (stopLoss >= current.close || (current.close - stopLoss)/current.close < 0.02) {
+     stopLoss = current.close * 0.95;
+  }
+
+  const risk = current.close - stopLoss;
+  
+  // Target: Open Ended (We use a high target, but rely on trailing stop)
+  // In a real execution engine, we would manage the trade tick-by-tick.
+  // For this backtester, we simulate a wider target to allow the run.
+  let target = current.close + (risk * 4); 
+
+  return {
+    signal: 'BUY',
+    stopLoss: stopLoss,
+    target: target,
+    reason: \`VP Trend v2: Breakout > VAH. Wide Target (4R) for Trailing\`
   };
 }
 return null;
@@ -321,16 +432,15 @@ return null;
   },
   {
     id: 'macd-standard',
-    name: 'MACD (Standard)',
-    description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter.',
+    name: 'MACD (Standard v2)',
+    description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter. Uses Advanced S&R.',
     parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, minAdx: 20 },
     code: `
-// MACD Standard (Smart Trend + Chandelier)
+// MACD Standard v2 (Smart Trend + Advanced S&R)
 const { macdLine, signalLine } = indicators.macd(data, params.fast, params.slow, params.signal);
 const trendSMA = indicators.sma(data, params.trendSma);
 const rsi = indicators.rsi(data, 14);
 const adx = indicators.adx(data, 14);
-const chandelier = indicators.chandelierExit(data, 22, 3.0);
 
 const currMacd = macdLine[macdLine.length - 1];
 const currSig = signalLine[signalLine.length - 1];
@@ -355,26 +465,31 @@ const isHealthy = currentRsi < params.maxRsi;
 const isTrending = currentAdx > params.minAdx;
 
 if (isCrossover && isUptrend && isHealthy && isTrending) {
-  let stopLoss = chandelier[chandelier.length - 1];
   
-  const isValidChandelier = stopLoss && !isNaN(stopLoss) && stopLoss < currentClose;
+  // Find Support & Resistance (Advanced v2)
+  const { supports, resistances } = indicators.findSupportResistance(data, 30);
   
-  if (!isValidChandelier) {
-     const { supports } = indicators.findSupportResistance(data, 10);
-     const nearestSupport = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
-     stopLoss = nearestSupport || currentClose * 0.95;
+  // Stop Loss: Nearest Strong Support
+  let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+  
+  if (!stopLoss || stopLoss >= currentClose) {
+     stopLoss = currentClose * 0.95; // Fallback 5%
   }
 
-  if (stopLoss >= currentClose) stopLoss = currentClose * 0.95;
-
   const risk = currentClose - stopLoss;
-  let target = currentClose + (risk * 3);
+  
+  // Target: Nearest Strong Resistance
+  let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
+  
+  if (!target || (target - currentClose) < (risk * 1.5)) {
+     target = currentClose + (risk * 3); // 3R Target if no resistance or too close
+  }
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`MACD Standard: Cross + Uptrend + ADX > 20\`
+    reason: \`MACD v2: Cross + Uptrend + ADX > 20\`
   };
 }
 return null;
@@ -383,16 +498,15 @@ return null;
 
   {
     id: 'bb-squeeze',
-    name: 'Bollinger Band Squeeze (True Expansion)',
-    description: 'Buys when price breaks Upper Band with expanding bandwidth and high volume. Filters out fakeouts.',
+    name: 'Bollinger Band Squeeze (True Expansion v2)',
+    description: 'Buys when price breaks Upper Band with expanding bandwidth and high volume. Uses Advanced S&R.',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
     code: `
-// Bollinger Band Squeeze (True Expansion + Volume)
+// Bollinger Band Squeeze v2 (True Expansion + Volume + Advanced S&R)
 const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
 
 const i = data.length - 1;
 const currentClose = data[i].close;
-const currentOpen = data[i].open;
 const currentHigh = data[i].high;
 const currentLow = data[i].low;
 
@@ -402,48 +516,43 @@ const currentLower = lower[i];
 const prevLower = lower[i-1];
 
 // 1. Calculate Bandwidth (The "Squeeze" Metric)
-// Formula: (Upper - Lower) / Middle
 const currentBW = (currentUpper - currentLower) / middle[i];
 const prevBW = (prevUpper - prevLower) / middle[i-1];
 
 // 2. Expansion Condition (The "Pop")
-// We want the bands to be opening up (volatility increasing)
 const isExpanding = currentBW > prevBW;
 
 // 3. Breakout Condition
-// Price closes ABOVE the Upper Band
 const isBreakout = currentClose > currentUpper;
 
-// 4. Candle Quality (Avoid "Shooting Stars")
-// The Close should be in the upper 25% of the day's range.
-// If there is a huge upper wick, it means sellers pushed it down -> AVOID.
+// 4. Candle Quality
 const range = currentHigh - currentLow;
 const closePosition = (currentClose - currentLow) / range;
 const isStrongClose = closePosition > 0.75;
 
 // 5. Volume Confirmation
-// Volume must be higher than the 20-period average
 const recentVols = data.slice(-21, -1).map(c => c.volume);
 const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
 const isVolumeHigh = data[i].volume > avgVol;
 
 if (isBreakout && isExpanding && isStrongClose && isVolumeHigh) {
   
-  // Stop Loss: The Middle Band (20 SMA)
-  // In a true "Walk the Bands" breakout, price rarely touches the 20 SMA.
-  // Using the 20 SMA is standard, but if it's too far, use the Low of the Breakout Candle.
+  // Stop Loss: Middle Band (20 SMA) or Nearest Strong Support
+  const { supports } = indicators.findSupportResistance(data, 30);
+  let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
+  
   const sma20 = middle[i];
-  const lowOfCandle = currentLow;
   
-  // Use the tighter of the two to manage risk, but default to SMA 20 for trend riding
-  let stopLoss = sma20;
+  // If support is too far (> 8%), use SMA 20
+  if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.08) {
+      stopLoss = sma20;
+  }
   
-  // Safety: If SMA 20 is > 5% away, tighten to the breakout candle's low
+  // If SMA 20 is still too far, use Low of Candle
   if ((currentClose - stopLoss) / currentClose > 0.05) {
-     stopLoss = lowOfCandle;
+     stopLoss = currentLow;
   }
 
-  // Target: Momentum play (Open ended) -> But we set 2.5R for the system
   const risk = currentClose - stopLoss;
   let target = currentClose + (risk * 2.5);
 
@@ -451,7 +560,7 @@ if (isBreakout && isExpanding && isStrongClose && isVolumeHigh) {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`BB Squeeze Breakout: Strong Close + Vol Expansion. SL: \${stopLoss.toFixed(2)}\`
+    reason: \`BB Squeeze v2: Strong Close + Vol Expansion. SL: \${stopLoss.toFixed(2)}\`
   };
 }
 return null;
@@ -1018,6 +1127,84 @@ if (isHammer) {
       target: target,
       reason: \`Hammer Candle at Support (\${nearestSupport.toFixed(2)})\`
     };
+  }
+}
+return null;
+    `
+  },
+  {
+    id: 'fib-golden-zone',
+    name: 'Fibonacci Golden Zone (Pullback)',
+    description: 'Buys when price retraces to the 50%-61.8% zone in an uptrend and bounces. High probability setup.',
+    parameters: { lookback: 50, defaultRiskPct: 0.05 },
+    code: `
+// Fibonacci Golden Zone Strategy
+const i = data.length - 1;
+const current = data[i];
+const sma200 = indicators.sma(data, 200);
+const currentTrend = sma200[sma200.length - 1];
+
+// 1. Trend Filter: Must be in long-term uptrend
+if (current.close < currentTrend) return null;
+
+// 2. Find Swing High and Swing Low (Anchors)
+// We look back 'params.lookback' periods to find the highest high
+const lookback = params.lookback;
+let highestHigh = -Infinity;
+let highIndex = -1;
+
+for (let j = 0; j < lookback; j++) {
+  if (data[i - j].high > highestHigh) {
+    highestHigh = data[i - j].high;
+    highIndex = i - j;
+  }
+}
+
+// Now find the lowest low BEFORE that high (within reasonable range)
+let lowestLow = Infinity;
+for (let j = highIndex; j >= Math.max(0, highIndex - lookback); j--) {
+  if (data[j].low < lowestLow) {
+    lowestLow = data[j].low;
+  }
+}
+
+// 3. Calculate Fib Levels
+const range = highestHigh - lowestLow;
+const fib50 = highestHigh - (range * 0.5);
+const fib618 = highestHigh - (range * 0.618);
+const fib786 = highestHigh - (range * 0.786);
+
+// 4. The "Golden Zone" Condition
+// Price must be inside or just touched the 50% - 61.8% zone
+// And we need a bounce (Green Candle)
+const inZone = current.low <= fib50 && current.close >= fib618; 
+const isGreen = current.close > current.open;
+
+if (inZone && isGreen) {
+  
+  // 5. Confluence: RSI not overbought (room to run)
+  const rsi = indicators.rsi(data, 14);
+  const currentRsi = rsi[rsi.length - 1];
+  
+  if (currentRsi < 55) {
+     // Stop Loss: Below the 78.6% level (Invalidation)
+     const stopLoss = fib786;
+     
+     // Target: The Swing High (0% Retracement)
+     const target = highestHigh;
+     
+     // Ensure Risk:Reward is decent (> 1.5)
+     const risk = current.close - stopLoss;
+     const reward = target - current.close;
+     
+     if (reward / risk > 1.5) {
+        return {
+          signal: 'BUY',
+          stopLoss: stopLoss,
+          target: target,
+          reason: \`Fib Golden Zone: Bounce off \${fib618.toFixed(2)} (61.8%). Target: Highs\`
+        };
+     }
   }
 }
 return null;

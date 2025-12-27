@@ -176,11 +176,13 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
 
             // Check Min Risk:Reward
             if (filters.minRiskReward && rr < filters.minRiskReward) {
+              // console.log(`[Filter] Rejected ${strategy.id} on ${candle.date}: RR ${rr.toFixed(2)} < ${filters.minRiskReward}`);
               continue;
             }
 
             // Check Max Stop Loss %
             if (filters.maxStopLossPercent && stopLossPct > filters.maxStopLossPercent) {
+              // console.log(`[Filter] Rejected ${strategy.id} on ${candle.date}: SL% ${stopLossPct.toFixed(2)} > ${filters.maxStopLossPercent}`);
               continue;
             }
 

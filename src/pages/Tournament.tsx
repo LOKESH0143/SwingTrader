@@ -351,6 +351,12 @@ export function Tournament() {
             <span className="font-semibold text-indigo-700 block text-xs uppercase tracking-wider">Data Period</span>
             <span className="font-medium">{executionDetails.period}</span>
           </div>
+          <div>
+            <span className="font-semibold text-indigo-700 block text-xs uppercase tracking-wider">Total Trades</span>
+            <span className="font-medium">
+              {results.reduce((acc, r) => acc + r.totalTrades, 0)}
+            </span>
+          </div>
           <div className="ml-auto">
              <button 
                onClick={() => alert(`Symbols in ${executionDetails.universeName}:\n\n${STOCK_UNIVERSES[selectedUniverse].symbols.join(', ')}`)}
@@ -502,6 +508,8 @@ export function Tournament() {
                 <th className="p-6 text-right">Total Return (Sum %)</th>
                 <th className="p-6 text-right">Win Rate</th>
                 <th className="p-6 text-right">Total Trades</th>
+                <th className="p-6 text-right">Avg Trades/Week</th>
+                <th className="p-6 text-right">Avg Hold</th>
                 <th className="p-6">Best Stock</th>
                 <th className="p-6"></th>
               </tr>
@@ -510,6 +518,31 @@ export function Tournament() {
               {results.map((res, index) => {
                 const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
                 const isExpanded = expandedId === res.strategyId;
+                
+                // Calculate Avg Trades Per Week
+                // We use the execution details period if available, otherwise estimate
+                let weeks = 52; // Default 1 year
+                if (executionDetails?.period === '5y') weeks = 52 * 5;
+                // If specific dates were used, we could be more precise, but this is a good approximation
+                // based on the "Data Period" filter.
+                
+                const avgTradesPerWeek = res.totalTrades / weeks;
+                
+                // Calculate Avg Hold Days
+                let totalHoldDays = 0;
+                let closedTradesCount = 0;
+                
+                res.allTrades.forEach(t => {
+                  if (t.exitDate) {
+                    const entry = new Date(t.entryDate).getTime();
+                    const exit = new Date(t.exitDate).getTime();
+                    const days = (exit - entry) / (1000 * 60 * 60 * 24);
+                    totalHoldDays += days;
+                    closedTradesCount++;
+                  }
+                });
+                
+                const avgHoldDays = closedTradesCount > 0 ? totalHoldDays / closedTradesCount : 0;
                 
                 return (
                   <React.Fragment key={res.strategyId}>
@@ -545,6 +578,12 @@ export function Tournament() {
                       </td>
                       <td className="p-6 text-right text-slate-600">
                         {res.totalTrades}
+                      </td>
+                      <td className="p-6 text-right text-slate-600">
+                        {avgTradesPerWeek.toFixed(1)}
+                      </td>
+                      <td className="p-6 text-right text-slate-600">
+                        {avgHoldDays.toFixed(1)}d
                       </td>
                       <td className="p-6 text-sm">
                         <span className="font-medium text-slate-900">{res.bestSymbol}</span>

@@ -25,6 +25,11 @@ export interface Strategy {
   description: string;
   code: string; // The actual logic as a string
   parameters: Record<string, number>;
+  bestScore?: {
+    totalPnL: number;
+    winRate: number;
+    date: string;
+  };
 }
 
 // Technical Analysis Helper Types

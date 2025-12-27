@@ -19,7 +19,6 @@ export function Layout() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          <NavItem to="/" icon={<ListTodo />} label="Requirements" />
           <NavItem to="/dashboard" icon={<LayoutDashboard />} label="Dashboard" />
           <NavItem to="/builder" icon={<Sparkles />} label="AI Architect" />
           <NavItem to="/strategies" icon={<BrainCircuit />} label="Strategies" />

@@ -1,6 +1,5 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { Requirements } from './pages/Requirements';
 import { Dashboard } from './pages/Dashboard';
 import { Strategies } from './pages/Strategies';
 import { Backtest } from './pages/Backtest';
@@ -14,7 +13,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route index element={<Requirements />} />
+        <Route index element={<Navigate to="/tournament" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="strategies" element={<Strategies />} />
         <Route path="builder" element={<StrategyBuilder />} />
