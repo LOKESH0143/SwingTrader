@@ -3,6 +3,10 @@ import { createServer as createViteServer } from "vite";
 import yahooFinance from 'yahoo-finance2';
 import { getCachedCandles, saveCandles } from './src/lib/db';
 import http from 'http';
+import fs from 'fs/promises';
+import path from 'path';
+
+const JOURNAL_FILE = './data/journal.json';
 
 async function startServer() {
   const app = express();
@@ -12,9 +16,16 @@ async function startServer() {
   // Middleware to parse JSON
   app.use(express.json());
 
+  // Ensure data directory exists
+  try {
+    await fs.mkdir('./data', { recursive: true });
+  } catch (e) {}
+
   // Request Logging Middleware
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    if (!req.url.includes('/api/history')) {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    }
     next();
   });
 
@@ -24,21 +35,11 @@ async function startServer() {
   });
 
   // --- JOURNAL API ---
-  const JOURNAL_FILE = './data/journal.json';
-  const fs = await import('fs/promises');
-  const path = await import('path');
-
-  // Ensure data directory exists
-  try {
-    await fs.mkdir('./data', { recursive: true });
-  } catch (e) {}
-
   app.get("/api/journal", async (req, res) => {
     try {
       const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
       res.json(JSON.parse(data));
     } catch (e) {
-      // If file doesn't exist, return empty array
       res.json([]);
     }
   });
@@ -70,7 +71,7 @@ async function startServer() {
         trades = JSON.parse(data);
       } catch (e) {}
 
-      const index = trades.findIndex((t: any) => t.id === id);
+      const index = trades.findIndex((t: any) => String(t.id) === String(id));
       if (index !== -1) {
         trades[index] = { ...trades[index], ...updatedTrade };
         await fs.writeFile(JOURNAL_FILE, JSON.stringify(trades, null, 2));
@@ -86,66 +87,33 @@ async function startServer() {
   app.delete("/api/journal/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      console.log(`[Delete] Request received for ID: ${id}`);
-      
       let trades = [];
       try {
         const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
         trades = JSON.parse(data);
       } catch (e) {}
 
-      const initialCount = trades.length;
-      // Ensure ID comparison is robust (string vs string)
-      const filtered = trades.filter((t: any) => String(t.id) !== String(id));
-      const finalCount = filtered.length;
-
-      console.log(`[Delete] Initial count: ${initialCount}, Final count: ${finalCount}`);
-
-      if (initialCount === finalCount) {
-        console.warn(`[Delete] Warning: ID ${id} not found in journal.`);
-      }
-      
+      const filtered = trades.filter((t: any) => String(t.id).trim() !== String(id).trim());
       await fs.writeFile(JOURNAL_FILE, JSON.stringify(filtered, null, 2));
       res.json({ success: true });
     } catch (e) {
-      console.error("Delete failed:", e);
       res.status(500).json({ error: "Failed to delete trade" });
     }
   });
 
-  // Alternative POST delete to avoid URL param issues
   app.post("/api/journal/delete", async (req, res) => {
     try {
       const { id } = req.body;
-      console.log(`[Post-Delete] Request received for ID: "${id}" (Type: ${typeof id})`);
-      
       let trades = [];
       try {
         const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
         trades = JSON.parse(data);
-        console.log(`[Post-Delete] Loaded ${trades.length} trades.`);
-        // Log all IDs for debugging
-        console.log(`[Post-Delete] Available IDs: ${trades.map((t: any) => `"${t.id}"`).join(', ')}`);
-      } catch (e) {
-        console.error(`[Post-Delete] Error reading file:`, e);
-      }
+      } catch (e) {}
 
-      const filtered = trades.filter((t: any) => {
-        const match = String(t.id).trim() !== String(id).trim();
-        if (!match) console.log(`[Post-Delete] Found match for ID: ${id}`);
-        return match;
-      });
-      
-      console.log(`[Post-Delete] Filtered count: ${filtered.length}`);
-      
-      if (trades.length === filtered.length) {
-         console.warn(`[Post-Delete] NO MATCH FOUND for ID: "${id}"`);
-      }
-
+      const filtered = trades.filter((t: any) => String(t.id).trim() !== String(id).trim());
       await fs.writeFile(JOURNAL_FILE, JSON.stringify(filtered, null, 2));
       res.json({ success: true });
     } catch (e) {
-      console.error("Post-Delete failed:", e);
       res.status(500).json({ error: "Failed to delete trade" });
     }
   });
@@ -156,6 +124,28 @@ async function startServer() {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "Failed to clear journal" });
+    }
+  });
+
+  // --- STRATEGY SCORES API ---
+  const SCORES_FILE = './data/scores.json';
+
+  app.get("/api/scores", async (req, res) => {
+    try {
+      const data = await fs.readFile(SCORES_FILE, 'utf-8');
+      res.json(JSON.parse(data));
+    } catch (e) {
+      res.json({});
+    }
+  });
+
+  app.post("/api/scores", async (req, res) => {
+    try {
+      const newScores = req.body; // Expecting Record<string, StrategyScore>
+      await fs.writeFile(SCORES_FILE, JSON.stringify(newScores, null, 2));
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to save scores" });
     }
   });
   // -------------------
@@ -181,7 +171,10 @@ async function startServer() {
           // If cached data starts BEFORE or roughly AT the required start date, it's good.
           if (cachedStart <= requiredStart.getTime() + (10 * 24 * 60 * 60 * 1000)) {
             console.log(`[Cache] Hit for ${symbol} (Range: ${range})`);
-            res.json(cachedData);
+            
+            // Filter cached data to match the requested range
+            const filteredData = cachedData.filter((c: any) => new Date(c.date).getTime() >= requiredStart.getTime());
+            res.json(filteredData);
             return;
           } else {
             console.log(`[Cache] Miss for ${symbol}: Insufficient history. Have ${cachedData[0].date}, Need ${requiredStart.toISOString().split('T')[0]}`);
@@ -200,24 +193,53 @@ async function startServer() {
       else if (range === '5y') startDate.setFullYear(endDate.getFullYear() - 5);
       else startDate.setMonth(endDate.getMonth() - 6); 
 
-      // Handle potential import issues (class vs instance)
-      // @ts-ignore
-      const yf = typeof yahooFinance === 'function' ? new yahooFinance() : yahooFinance;
+      let result: any[] = [];
+      try {
+        // Use yf.chart as it is more robust for NSE/BSE symbols
+        const chartResult = await yahooFinance.chart(symbol, {
+          period1: startDate,
+          period2: endDate,
+          interval: interval as any
+        }) as any;
 
-      const result = await yf.historical(symbol, {
-        period1: startDate,
-        period2: endDate,
-        interval: interval as '1d' | '1wk' | '1mo'
-      }) as Array<any>;
+        if (chartResult && chartResult.quotes && chartResult.quotes.length > 0) {
+          result = chartResult.quotes
+            .filter((q: any) => q.date && q.open !== null && q.high !== null && q.low !== null && q.close !== null)
+            .map((q: any) => ({
+              date: q.date,
+              open: q.open,
+              high: q.high,
+              low: q.low,
+              close: q.close,
+              volume: q.volume || 0
+            }));
+        } else {
+          throw new Error("No data in chart response");
+        }
+      } catch (chartError: any) {
+        console.warn(`[Yahoo] Chart fetch failed for ${symbol}, trying historical fallback...`, chartError.message);
+        // Fallback to historical
+        const historicalResult = await yahooFinance.historical(symbol, {
+          period1: startDate,
+          period2: endDate,
+          interval: interval as any
+        }) as Array<any>;
+        
+        if (historicalResult && historicalResult.length > 0) {
+          result = historicalResult;
+        } else {
+          throw chartError; // Re-throw original error if fallback also fails
+        }
+      }
 
       // Map to our Candle format
       const candles = result.map(quote => ({
-        date: quote.date.toISOString(),
+        date: new Date(quote.date).toISOString().split('T')[0],
         open: quote.open,
         high: quote.high,
         low: quote.low,
         close: quote.close,
-        volume: quote.volume
+        volume: quote.volume || 0
       }));
 
       // 3. Save to Cache (Background)

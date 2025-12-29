@@ -7,7 +7,8 @@ import { fetchHistory } from '../services/api';
 import { runBacktest, TradeFilters } from '../lib/backtest';
 import { cn } from '../lib/utils';
 import { TradeChart } from '../components/TradeChart';
-import { Candle } from '../lib/types';
+import { Candle, StrategyScore } from '../lib/types';
+import { updateStrategyScore, getStrategyScores } from '../lib/scores';
 
 interface TradeDetails {
   symbol: string;
@@ -44,7 +45,7 @@ export function Tournament() {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<StrategyPerformance[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_100');
+  const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_50');
   
   // Trade Inspector State
   const [selectedTrade, setSelectedTrade] = useState<TradeDetails | null>(null);
@@ -54,6 +55,17 @@ export function Tournament() {
   // AI Analysis State
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
+  const [scores, setScores] = useState<Record<string, StrategyScore>>({});
+  const [showSymbolList, setShowSymbolList] = useState(false);
+
+  useEffect(() => {
+    loadScores();
+  }, []);
+
+  const loadScores = async () => {
+    const data = await getStrategyScores();
+    setScores(data);
+  };
 
   const handleAIAnalysis = async () => {
     if (results.length === 0) return;
@@ -85,8 +97,8 @@ export function Tournament() {
 
   // Filters
   const [filters, setFilters] = useState<TradeFilters>({
-    minRiskReward: 0,
-    maxStopLossPercent: 0,
+    minRiskReward: 2,
+    maxStopLossPercent: 5,
     minTargetPercent: 0,
     startDate: '',
     endDate: ''
@@ -119,7 +131,7 @@ export function Tournament() {
     period: string;
   } | null>(null);
 
-  const runTournament = async () => {
+  const runTournament = async (overrideRange?: '5y' | '6m') => {
     setRunning(true);
     setResults([]);
     setProgress(0);
@@ -130,11 +142,13 @@ export function Tournament() {
     const totalSymbols = universeSymbols.length;
     
     // Determine effective date range
-    // If filters are set, use them. If not, we default to '1y' or '5y' logic
-    const period = (filters.startDate || filters.endDate) ? '5y' : '1y';
+    let period: '6m' | '1y' | '2y' | '5y' = '1y';
+    if (overrideRange) {
+      period = overrideRange;
+    } else if (filters.startDate || filters.endDate) {
+      period = '5y';
+    }
     
-    // We can't know the exact start/end date of the data until we fetch it, 
-    // but we can show what the user requested or the default period.
     const effectiveStartDate = filters.startDate || `(Default: Last ${period})`;
     const effectiveEndDate = filters.endDate || '(Default: Today)';
 
@@ -169,15 +183,10 @@ export function Tournament() {
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
-          // If custom date range is set, fetch longer history (5y) to ensure we cover the requested period
-          // Otherwise default to 1y for speed
-          const period = (filters.startDate || filters.endDate) ? '5y' : '1y';
           const data = await fetchHistory(symbol, period);
           
           PREBUILT_STRATEGIES.forEach(strategy => {
-            // Pass filters to runBacktest
             const activeFilters: TradeFilters = { ...filters };
-            // Clean up empty values
             if (!activeFilters.minRiskReward) delete activeFilters.minRiskReward;
             if (!activeFilters.maxStopLossPercent) delete activeFilters.maxStopLossPercent;
             if (!activeFilters.minTargetPercent) delete activeFilters.minTargetPercent;
@@ -190,7 +199,6 @@ export function Tournament() {
             sStats.totalTrades += result.metrics.totalTrades;
             sStats.wins += result.trades.filter(t => t.pnl > 0).length;
             
-            // Summing up PnL percentages to normalize across stock prices
             const symbolPnL = result.trades.reduce((acc, t) => acc + t.pnlPercent, 0);
             sStats.totalPnL += symbolPnL;
 
@@ -199,7 +207,6 @@ export function Tournament() {
               sStats.bestSymbolPnL = symbolPnL;
             }
 
-            // Collect trades
             result.trades.forEach(t => {
               sStats.allTrades.push({
                 symbol,
@@ -222,8 +229,17 @@ export function Tournament() {
       }));
 
       setProgress(((i + chunkSize) / totalSymbols) * 100);
-      // Force update UI with intermediate results
       setResults(Object.values(stats).sort((a, b) => b.totalPnL - a.totalPnL));
+    }
+
+    // Save scores if in override mode
+    if (overrideRange) {
+      const mode = overrideRange === '5y' ? 'avg' : 'recent';
+      for (const res of Object.values(stats)) {
+        const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
+        await updateStrategyScore(res.strategyId, res.totalPnL, winRate, mode);
+      }
+      await loadScores();
     }
 
     setRunning(false);
@@ -312,26 +328,54 @@ export function Tournament() {
             Filters
           </button>
           <button
-            onClick={runTournament}
+            onClick={() => runTournament()}
             disabled={running}
             className={cn(
               "flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white shadow-lg transition-all",
               running 
                 ? "bg-slate-400 cursor-not-allowed" 
-                : "bg-amber-500 hover:bg-amber-600 shadow-amber-200"
+                : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
             )}
           >
             {running ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Running ({Math.round(progress)}%)...
+                Running...
               </>
             ) : (
               <>
-                <Trophy className="w-5 h-5" />
-                Start Tournament
+                <Play className="w-5 h-5" />
+                Run Backtest
               </>
             )}
+          </button>
+
+          <div className="h-10 w-px bg-slate-200 mx-1"></div>
+
+          <button
+            onClick={() => runTournament('5y')}
+            disabled={running}
+            className={cn(
+              "flex items-center gap-2 px-4 py-3 rounded-lg font-medium border transition-all",
+              running ? "opacity-50 cursor-not-allowed" : "bg-white border-amber-200 text-amber-700 hover:bg-amber-50"
+            )}
+            title="Run tournament on 5 years of data to update average scores"
+          >
+            <Trophy className="w-5 h-5" />
+            Update Avg (5Y)
+          </button>
+
+          <button
+            onClick={() => runTournament('6m')}
+            disabled={running}
+            className={cn(
+              "flex items-center gap-2 px-4 py-3 rounded-lg font-medium border transition-all",
+              running ? "opacity-50 cursor-not-allowed" : "bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            )}
+            title="Run tournament on last 6 months of data to update recent scores"
+          >
+            <TrendingUp className="w-5 h-5" />
+            Update Recent (6M)
           </button>
         </div>
       </div>
@@ -359,11 +403,47 @@ export function Tournament() {
           </div>
           <div className="ml-auto">
              <button 
-               onClick={() => alert(`Symbols in ${executionDetails.universeName}:\n\n${STOCK_UNIVERSES[selectedUniverse].symbols.join(', ')}`)}
+               onClick={() => setShowSymbolList(true)}
                className="text-indigo-600 hover:text-indigo-800 underline text-xs font-medium"
              >
                View Symbol List
              </button>
+          </div>
+        </div>
+      )}
+
+      {/* Symbol List Modal */}
+      {showSymbolList && executionDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-900">
+                Symbols in {executionDetails.universeName}
+              </h3>
+              <button 
+                onClick={() => setShowSymbolList(false)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {STOCK_UNIVERSES[selectedUniverse].symbols.map(symbol => (
+                  <div key={symbol} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded text-sm font-mono text-slate-700">
+                    {symbol}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setShowSymbolList(false)}
+                className="px-6 py-2 bg-indigo-600 text-white font-medium hover:bg-indigo-700 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -506,6 +586,8 @@ export function Tournament() {
                 <th className="p-6">Rank</th>
                 <th className="p-6">Strategy</th>
                 <th className="p-6 text-right">Total Return (Sum %)</th>
+                <th className="p-6 text-right" title="Score from 5-year data">Avg Score (5Y)</th>
+                <th className="p-6 text-right" title="Score from 6-month data">Recent Score (6M)</th>
                 <th className="p-6 text-right">Win Rate</th>
                 <th className="p-6 text-right">Total Trades</th>
                 <th className="p-6 text-right">Avg Trades/Week</th>
@@ -520,9 +602,10 @@ export function Tournament() {
                 const isExpanded = expandedId === res.strategyId;
                 
                 // Calculate Avg Trades Per Week
-                // We use the execution details period if available, otherwise estimate
                 let weeks = 52; // Default 1 year
                 if (executionDetails?.period === '5y') weeks = 52 * 5;
+                else if (executionDetails?.period === '6m') weeks = 26;
+                else if (executionDetails?.period === '2y') weeks = 52 * 2;
                 // If specific dates were used, we could be more precise, but this is a good approximation
                 // based on the "Data Period" filter.
                 
@@ -573,6 +656,34 @@ export function Tournament() {
                       )}>
                         {res.totalPnL > 0 ? '+' : ''}{res.totalPnL.toFixed(2)}%
                       </td>
+                      <td className="p-6 text-right text-slate-500 font-mono text-xs">
+                        {(() => {
+                          const s = scores[res.strategyId];
+                          if (!s || !s.lastUpdatedAvg) return '-';
+                          return (
+                            <div className="flex flex-col">
+                              <span className={cn(s.avgPnL > 0 ? "text-green-600" : "text-red-600")}>
+                                {s.avgPnL > 0 ? '+' : ''}{s.avgPnL.toFixed(1)}%
+                              </span>
+                              <span className="text-[10px] opacity-50">{s.avgWinRate.toFixed(0)}% WR</span>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="p-6 text-right text-slate-500 font-mono text-xs">
+                        {(() => {
+                          const s = scores[res.strategyId];
+                          if (!s || !s.lastUpdatedRecent) return '-';
+                          return (
+                            <div className="flex flex-col">
+                              <span className={cn(s.recentPnL > 0 ? "text-green-600" : "text-red-600")}>
+                                {s.recentPnL > 0 ? '+' : ''}{s.recentPnL.toFixed(1)}%
+                              </span>
+                              <span className="text-[10px] opacity-50">{s.recentWinRate.toFixed(0)}% WR</span>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="p-6 text-right text-slate-700">
                         {winRate.toFixed(1)}%
                       </td>
@@ -595,7 +706,7 @@ export function Tournament() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-slate-50">
-                        <td colSpan={7} className="p-6">
+                        <td colSpan={11} className="p-6">
                           <div className="grid grid-cols-2 gap-8">
                             <div>
                               <h4 className="text-sm font-semibold text-green-700 mb-3 flex items-center gap-2">

@@ -51,3 +51,13 @@ export interface JournalTrade {
   notes?: string;
   direction: 'LONG' | 'SHORT';
 }
+
+export interface StrategyScore {
+  strategyId: string;
+  avgPnL: number;
+  avgWinRate: number;
+  recentPnL: number;
+  recentWinRate: number;
+  lastUpdatedAvg?: string;
+  lastUpdatedRecent?: string;
+}

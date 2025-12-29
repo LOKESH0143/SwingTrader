@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { journalService } from '../services/journal';
 import { JournalTrade } from '../lib/types';
-import { Plus, Edit2, Trash2, CheckCircle, XCircle, Clock, Save, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, CheckCircle, XCircle, Clock, Save, X, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export function Journal() {
   const [trades, setTrades] = useState<JournalTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingTrade, setEditingTrade] = useState<JournalTrade | null>(null);
+  const [tradeToDelete, setTradeToDelete] = useState<string | null>(null);
+  const [isClearingAll, setIsClearingAll] = useState(false);
   const [isNew, setIsNew] = useState(false);
 
   useEffect(() => {
@@ -42,22 +44,29 @@ export function Journal() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this trade?")) {
+    if (!id) {
+      alert("Error: This trade has no valid ID and cannot be deleted.");
+      return;
+    }
+    setTradeToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!tradeToDelete) return;
+    const id = tradeToDelete;
+    
+    try {
       // Optimistic update: Remove from UI immediately
       const previousTrades = [...trades];
       setTrades(trades.filter(t => t.id !== id));
+      setTradeToDelete(null);
 
-      try {
-        await journalService.deleteTrade(id);
-        // Success - no need to reload, state is already correct
-        // But we can reload in background just to be safe
-        loadTrades(); 
-      } catch (e) {
-        console.error("Delete failed", e);
-        alert("Failed to delete trade. Please check console for details.");
-        // Revert UI on failure
-        setTrades(previousTrades);
-      }
+      await journalService.deleteTrade(id);
+      loadTrades(); 
+    } catch (e) {
+      console.error("Delete operation failed:", e);
+      alert("Failed to delete trade. Please check console for details.");
+      loadTrades(); // Refresh to restore UI state
     }
   };
 
@@ -77,11 +86,22 @@ export function Journal() {
     setIsNew(true);
   };
 
+  const handleClearAll = async () => {
+    try {
+      setIsClearingAll(false);
+      await journalService.clearAll();
+      loadTrades();
+    } catch (e) {
+      console.error("Clear all failed:", e);
+      alert("Failed to clear journal.");
+    }
+  };
   const calculatePnL = (trade: JournalTrade) => {
-    if (trade.status === 'CLOSED' && trade.exitPrice && trade.entryPrice) {
+    if (trade.status === 'CLOSED' && trade.exitPrice && trade.entryPrice && trade.entryPrice !== 0) {
       const diff = trade.exitPrice - trade.entryPrice;
       const pnl = trade.direction === 'LONG' ? diff : -diff;
-      return (pnl / trade.entryPrice) * 100;
+      const result = (pnl / trade.entryPrice) * 100;
+      return isNaN(result) ? 0 : result;
     }
     return null;
   };
@@ -96,12 +116,7 @@ export function Journal() {
         <div className="flex gap-3">
           {trades.length > 0 && (
             <button 
-              onClick={async () => {
-                if (confirm("WARNING: This will delete ALL trades from your journal. This cannot be undone.")) {
-                  await journalService.clearAll();
-                  loadTrades();
-                }
-              }}
+              onClick={() => setIsClearingAll(true)}
               className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
             >
               <Trash2 className="w-4 h-4" /> Clear All
@@ -115,6 +130,68 @@ export function Journal() {
           </button>
         </div>
       </div>
+
+      {/* Clear All Confirmation Modal */}
+      {isClearingAll && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Clear Journal?</h3>
+              <p className="text-slate-600 text-sm">
+                WARNING: This will delete ALL trades from your journal. This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+              <button 
+                onClick={() => setIsClearingAll(false)}
+                className="flex-1 px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleClearAll}
+                className="flex-1 px-4 py-2 bg-red-600 text-white font-medium hover:bg-red-700 rounded-lg transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {tradeToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Delete Trade?</h3>
+              <p className="text-slate-600 text-sm">
+                Are you sure you want to delete this trade? This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+              <button 
+                onClick={() => setTradeToDelete(null)}
+                className="flex-1 px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2 bg-red-600 text-white font-medium hover:bg-red-700 rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -188,6 +265,7 @@ export function Journal() {
                   <td className="p-4 font-medium">
                     <div>{trade.symbol}</div>
                     <div className="text-xs text-slate-500">{trade.strategyName}</div>
+                    <div className="text-[10px] text-gray-300">{trade.id || "NO ID"}</div>
                   </td>
                   <td className="p-4 text-slate-600">{trade.entryDate}</td>
                   <td className="p-4 text-right font-mono">{trade.entryPrice.toFixed(2)}</td>
@@ -204,12 +282,14 @@ export function Journal() {
                   <td className="p-4">
                     <div className="flex gap-2">
                       <button 
+                        type="button"
                         onClick={() => { setEditingTrade(trade); setIsNew(false); }}
                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
+                        type="button"
                         onClick={() => handleDelete(trade.id)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                       >
@@ -295,27 +375,30 @@ export function Journal() {
                   <label className="block text-sm font-medium text-slate-700 mb-1">Entry Price</label>
                   <input 
                     type="number" 
-                    value={editingTrade.entryPrice}
-                    onChange={e => setEditingTrade({...editingTrade, entryPrice: parseFloat(e.target.value)})}
+                    value={editingTrade.entryPrice === 0 ? '' : editingTrade.entryPrice}
+                    onChange={e => setEditingTrade({...editingTrade, entryPrice: parseFloat(e.target.value) || 0})}
                     className="w-full p-2 border border-slate-300 rounded-lg"
+                    placeholder="0.00"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Stop Loss</label>
                   <input 
                     type="number" 
-                    value={editingTrade.stopLoss}
-                    onChange={e => setEditingTrade({...editingTrade, stopLoss: parseFloat(e.target.value)})}
+                    value={editingTrade.stopLoss === 0 ? '' : editingTrade.stopLoss}
+                    onChange={e => setEditingTrade({...editingTrade, stopLoss: parseFloat(e.target.value) || 0})}
                     className="w-full p-2 border border-slate-300 rounded-lg text-red-600"
+                    placeholder="0.00"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Target</label>
                   <input 
                     type="number" 
-                    value={editingTrade.target}
-                    onChange={e => setEditingTrade({...editingTrade, target: parseFloat(e.target.value)})}
+                    value={editingTrade.target === 0 ? '' : editingTrade.target}
+                    onChange={e => setEditingTrade({...editingTrade, target: parseFloat(e.target.value) || 0})}
                     className="w-full p-2 border border-slate-300 rounded-lg text-green-600"
+                    placeholder="0.00"
                   />
                 </div>
               </div>
@@ -337,9 +420,10 @@ export function Journal() {
                       <label className="block text-sm font-medium text-slate-700 mb-1">Exit Price</label>
                       <input 
                         type="number" 
-                        value={editingTrade.exitPrice || ''}
-                        onChange={e => setEditingTrade({...editingTrade, exitPrice: parseFloat(e.target.value)})}
+                        value={editingTrade.exitPrice === 0 ? '' : (editingTrade.exitPrice || '')}
+                        onChange={e => setEditingTrade({...editingTrade, exitPrice: parseFloat(e.target.value) || 0})}
                         className="w-full p-2 border border-slate-300 rounded-lg"
+                        placeholder="0.00"
                       />
                     </div>
                   </div>

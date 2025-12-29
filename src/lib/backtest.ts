@@ -73,13 +73,9 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
        startIndex = foundIndex;
     }
   } else {
-    // Default Behavior: If NO start date filter is provided, default to last 1 year (approx 252 trading days)
-    // This prevents running backtest on the entire 5y history when user just wants a quick check.
-    // However, we must ensure we have enough data for warmup.
-    const oneYearAgoIndex = data.length - 252;
-    if (oneYearAgoIndex > warmupPeriod) {
-        startIndex = oneYearAgoIndex;
-    }
+    // Default Behavior: If NO start date filter is provided, run on ALL available data
+    // starting after the warmup period.
+    startIndex = Math.min(warmupPeriod, data.length);
   }
 
   let endFilterTime = 0;

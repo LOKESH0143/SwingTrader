@@ -47,50 +47,6 @@ export function getStrategyScore(id: string) {
 export const PREBUILT_STRATEGIES: Strategy[] = [
   // --- GOLDEN CROSS ---
   {
-    id: 'golden-cross-v1',
-    name: 'Golden Cross (v1: Standard)',
-    description: 'Classic Golden Cross (SMA 50 > SMA 200) with basic RSI filter. Uses ATR for stops.',
-    parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
-    code: `
-// Golden Cross v1 (Standard)
-const fastSMA = indicators.sma(data, params.fastPeriod);
-const slowSMA = indicators.sma(data, params.slowPeriod);
-const rsi = indicators.rsi(data, 14);
-
-const i = data.length - 1;
-const currentFast = fastSMA[i];
-const currentSlow = slowSMA[i];
-const prevFast = fastSMA[i-1];
-const prevSlow = slowSMA[i-1];
-
-// 1. Crossover
-const isGoldenCross = prevFast < prevSlow && currentFast > currentSlow;
-
-if (isGoldenCross) {
-  const currentClose = data[i].close;
-  const currentRsi = rsi[i];
-  
-  // Basic RSI Filter
-  if (currentRsi > 50 && currentRsi < 70) {
-    
-    // Simple ATR Stop
-    const atr = indicators.atr(data, 14);
-    const currentAtr = atr[atr.length - 1];
-    const stopLoss = currentClose - (currentAtr * 2);
-    const target = currentClose + (currentAtr * 4); // 2R
-
-    return {
-      signal: 'BUY',
-      stopLoss: stopLoss,
-      target: target,
-      reason: \`Golden Cross v1: Standard Cross\`
-    };
-  }
-}
-return null;
-    `
-  },
-  {
     id: 'golden-cross-v2',
     name: 'Golden Cross (v2: Advanced S&R)',
     description: 'Optimized Golden Cross with Advanced Support/Resistance logic. Relaxed filters to capture more moves.',
@@ -561,53 +517,6 @@ if (isBreakout && isExpanding && isStrongClose && isVolumeHigh) {
     stopLoss: stopLoss,
     target: target,
     reason: \`BB Squeeze v2: Strong Close + Vol Expansion. SL: \${stopLoss.toFixed(2)}\`
-  };
-}
-return null;
-    `
-  },
-  {
-    id: 'bb-breakout-simple',
-    name: 'Bollinger Band Breakout (Simple)',
-    description: 'Buys when price breaks above the Upper Bollinger Band. Simple volatility breakout.',
-    parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
-    code: `
-// Bollinger Band Squeeze Strategy
-const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
-
-const currentClose = data[data.length - 1].close;
-const prevClose = data[data.length - 2].close;
-const currentUpper = upper[upper.length - 1];
-const prevUpper = upper[upper.length - 2];
-
-// 1. Breakout Condition: Price crosses above Upper Band
-const isBreakout = prevClose < prevUpper && currentClose > currentUpper;
-
-// 2. Squeeze Condition (Optional but good): Band width is relatively narrow
-// For simplicity, we just check for the breakout here as the primary signal
-
-if (isBreakout) {
-  // Find Support & Resistance
-  const { supports, resistances } = indicators.findSupportResistance(data, 10);
-
-  // Stop Loss: Middle Band (SMA 20) or Nearest Support
-  let stopLoss = indicators.getNearestLevel(currentClose, supports, 'SUPPORT');
-  if (!stopLoss || (currentClose - stopLoss) / currentClose > 0.10) {
-     stopLoss = middle[middle.length - 1]; // Use Middle Band as dynamic support
-  }
-
-  // Target: 2x Risk or Nearest Resistance
-  let target = indicators.getNearestLevel(currentClose, resistances, 'RESISTANCE');
-  if (!target) {
-     const risk = currentClose - stopLoss;
-     target = currentClose + (risk * 2.5); // Breakouts run hard
-  }
-
-  return {
-    signal: 'BUY',
-    stopLoss: stopLoss,
-    target: target,
-    reason: \`Bollinger Breakout: Price (\${currentClose.toFixed(2)}) > Upper Band (\${currentUpper.toFixed(2)})\`
   };
 }
 return null;

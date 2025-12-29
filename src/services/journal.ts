@@ -2,19 +2,26 @@ import { JournalTrade } from '../lib/types';
 
 export const journalService = {
   async getTrades(): Promise<JournalTrade[]> {
+    // Add timestamp to prevent caching
     const res = await fetch(`/api/journal?t=${Date.now()}`);
+    if (!res.ok) throw new Error("Failed to fetch trades");
     return res.json();
   },
 
   async addTrade(trade: Omit<JournalTrade, 'id'>): Promise<JournalTrade> {
-    const id = crypto.randomUUID();
+    // Generate ID here to ensure it exists before sending
+    const payload = { ...trade, id: crypto.randomUUID() }; 
+    
     const res = await fetch('/api/journal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...trade, id }),
+      body: JSON.stringify(payload),
     });
+    
+    if (!res.ok) throw new Error("Failed to add trade");
+    
     const data = await res.json();
-    return data.trade;
+    return data.trade || data; 
   },
 
   async updateTrade(trade: JournalTrade): Promise<JournalTrade> {
@@ -23,22 +30,24 @@ export const journalService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(trade),
     });
+    
+    if (!res.ok) throw new Error("Failed to update trade");
+    
     const data = await res.json();
-    return data.trade;
+    return data.trade || data;
   },
 
   async deleteTrade(id: string): Promise<void> {
-    // Try POST method which is more robust against URL issues
-    const res = await fetch('/api/journal/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
+    if (!id) throw new Error("Cannot delete trade with missing ID");
+
+    // Standard REST DELETE request
+    const res = await fetch(`/api/journal/${id}`, { 
+      method: 'DELETE' 
     });
     
     if (!res.ok) {
-        // Fallback to DELETE if POST fails (unlikely)
-        const res2 = await fetch(`/api/journal/${id}`, { method: 'DELETE' });
-        if (!res2.ok) throw new Error("Failed to delete trade");
+      const errorText = await res.text();
+      throw new Error(`Failed to delete trade: ${errorText}`);
     }
   },
 
