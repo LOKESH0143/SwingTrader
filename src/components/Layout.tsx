@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, LineChart, Settings, ListTodo, History, BrainCircuit, Book, Trophy, Sparkles } from 'lucide-react';
+import { LayoutDashboard, LineChart, Settings, ListTodo, History, BrainCircuit, Book, Trophy, Sparkles, BookOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export function Layout() {
@@ -20,6 +20,7 @@ export function Layout() {
 
         <nav className="flex-1 p-4 space-y-2">
           <NavItem to="/dashboard" icon={<LayoutDashboard />} label="Dashboard" />
+          <NavItem to="/journal" icon={<BookOpen />} label="Trade Journal" />
           <NavItem to="/builder" icon={<Sparkles />} label="AI Architect" />
           <NavItem to="/strategies" icon={<BrainCircuit />} label="Strategies" />
           <NavItem to="/backtest" icon={<History />} label="Backtest" />

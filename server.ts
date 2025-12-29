@@ -23,6 +23,143 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // --- JOURNAL API ---
+  const JOURNAL_FILE = './data/journal.json';
+  const fs = await import('fs/promises');
+  const path = await import('path');
+
+  // Ensure data directory exists
+  try {
+    await fs.mkdir('./data', { recursive: true });
+  } catch (e) {}
+
+  app.get("/api/journal", async (req, res) => {
+    try {
+      const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
+      res.json(JSON.parse(data));
+    } catch (e) {
+      // If file doesn't exist, return empty array
+      res.json([]);
+    }
+  });
+
+  app.post("/api/journal", async (req, res) => {
+    try {
+      const newTrade = req.body;
+      let trades = [];
+      try {
+        const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
+        trades = JSON.parse(data);
+      } catch (e) {}
+      
+      trades.push(newTrade);
+      await fs.writeFile(JOURNAL_FILE, JSON.stringify(trades, null, 2));
+      res.json({ success: true, trade: newTrade });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to save trade" });
+    }
+  });
+
+  app.put("/api/journal/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updatedTrade = req.body;
+      let trades = [];
+      try {
+        const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
+        trades = JSON.parse(data);
+      } catch (e) {}
+
+      const index = trades.findIndex((t: any) => t.id === id);
+      if (index !== -1) {
+        trades[index] = { ...trades[index], ...updatedTrade };
+        await fs.writeFile(JOURNAL_FILE, JSON.stringify(trades, null, 2));
+        res.json({ success: true, trade: trades[index] });
+      } else {
+        res.status(404).json({ error: "Trade not found" });
+      }
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update trade" });
+    }
+  });
+
+  app.delete("/api/journal/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[Delete] Request received for ID: ${id}`);
+      
+      let trades = [];
+      try {
+        const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
+        trades = JSON.parse(data);
+      } catch (e) {}
+
+      const initialCount = trades.length;
+      // Ensure ID comparison is robust (string vs string)
+      const filtered = trades.filter((t: any) => String(t.id) !== String(id));
+      const finalCount = filtered.length;
+
+      console.log(`[Delete] Initial count: ${initialCount}, Final count: ${finalCount}`);
+
+      if (initialCount === finalCount) {
+        console.warn(`[Delete] Warning: ID ${id} not found in journal.`);
+      }
+      
+      await fs.writeFile(JOURNAL_FILE, JSON.stringify(filtered, null, 2));
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Delete failed:", e);
+      res.status(500).json({ error: "Failed to delete trade" });
+    }
+  });
+
+  // Alternative POST delete to avoid URL param issues
+  app.post("/api/journal/delete", async (req, res) => {
+    try {
+      const { id } = req.body;
+      console.log(`[Post-Delete] Request received for ID: "${id}" (Type: ${typeof id})`);
+      
+      let trades = [];
+      try {
+        const data = await fs.readFile(JOURNAL_FILE, 'utf-8');
+        trades = JSON.parse(data);
+        console.log(`[Post-Delete] Loaded ${trades.length} trades.`);
+        // Log all IDs for debugging
+        console.log(`[Post-Delete] Available IDs: ${trades.map((t: any) => `"${t.id}"`).join(', ')}`);
+      } catch (e) {
+        console.error(`[Post-Delete] Error reading file:`, e);
+      }
+
+      const filtered = trades.filter((t: any) => {
+        const match = String(t.id).trim() !== String(id).trim();
+        if (!match) console.log(`[Post-Delete] Found match for ID: ${id}`);
+        return match;
+      });
+      
+      console.log(`[Post-Delete] Filtered count: ${filtered.length}`);
+      
+      if (trades.length === filtered.length) {
+         console.warn(`[Post-Delete] NO MATCH FOUND for ID: "${id}"`);
+      }
+
+      await fs.writeFile(JOURNAL_FILE, JSON.stringify(filtered, null, 2));
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Post-Delete failed:", e);
+      res.status(500).json({ error: "Failed to delete trade" });
+    }
+  });
+
+  app.post("/api/journal/clear", async (req, res) => {
+    try {
+      await fs.writeFile(JOURNAL_FILE, JSON.stringify([], null, 2));
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to clear journal" });
+    }
+  });
+  // -------------------
+
   app.get("/api/history/:symbol", async (req, res) => {
     const { symbol } = req.params;
     const { interval = '1d', range = '1y' } = req.query;

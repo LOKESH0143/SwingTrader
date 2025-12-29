@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Radar, Target, ArrowUpRight, ArrowDownRight, Zap, Search, AlertTriangle } from 'lucide-react';
+import { Radar, Target, ArrowUpRight, ArrowDownRight, Zap, Search, AlertTriangle, BookOpen, Check } from 'lucide-react';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
 import { PREBUILT_STRATEGIES } from '../lib/strategies';
 import { fetchHistory } from '../services/api';
 import { evaluateStrategy } from '../lib/scanner';
 import { Signal } from '../lib/types';
 import { cn } from '../lib/utils';
+import { journalService } from '../services/journal';
 
 export function Dashboard() {
   const [scanning, setScanning] = useState(false);
@@ -147,12 +148,32 @@ export function Dashboard() {
 }
 
 const SignalCard: React.FC<{ signal: Signal }> = ({ signal }) => {
+  const [added, setAdded] = useState(false);
   const risk = signal.price - signal.stopLoss;
   const reward = signal.target - signal.price;
   const rrRatio = reward / risk;
 
+  const handleAddToJournal = async () => {
+    try {
+      await journalService.addTrade({
+        symbol: signal.symbol,
+        strategyName: signal.strategyName,
+        entryDate: new Date().toISOString().split('T')[0],
+        entryPrice: signal.price,
+        stopLoss: signal.stopLoss,
+        target: signal.target,
+        status: 'OPEN',
+        direction: 'LONG',
+        notes: `Signal from ${signal.strategyName}. Reason: ${signal.reason}`
+      });
+      setAdded(true);
+    } catch (e) {
+      alert("Failed to add to journal");
+    }
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col h-full">
       <div className="p-5 border-b border-slate-100 flex justify-between items-start">
         <div>
           <div className="flex items-center gap-2">
@@ -192,9 +213,32 @@ const SignalCard: React.FC<{ signal: Signal }> = ({ signal }) => {
         </div>
       </div>
 
-      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 text-sm text-slate-600 flex items-start gap-2">
+      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 text-sm text-slate-600 flex items-start gap-2 flex-1">
         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
         {signal.reason}
+      </div>
+
+      <div className="p-4 border-t border-slate-100 bg-slate-50">
+        <button
+          onClick={handleAddToJournal}
+          disabled={added}
+          className={cn(
+            "w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors",
+            added 
+              ? "bg-green-100 text-green-700 cursor-default"
+              : "bg-white border border-slate-300 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200"
+          )}
+        >
+          {added ? (
+            <>
+              <Check className="w-4 h-4" /> Added to Journal
+            </>
+          ) : (
+            <>
+              <BookOpen className="w-4 h-4" /> Add to Journal
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

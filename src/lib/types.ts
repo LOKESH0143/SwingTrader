@@ -34,3 +34,20 @@ export interface Strategy {
 
 // Technical Analysis Helper Types
 export type IndicatorFn = (data: Candle[], period: number) => number[];
+
+export interface JournalTrade {
+  id: string;
+  symbol: string;
+  strategyName: string;
+  entryDate: string;
+  entryPrice: number;
+  stopLoss: number;
+  target: number;
+  quantity?: number;
+  status: 'OPEN' | 'CLOSED' | 'PENDING';
+  exitDate?: string;
+  exitPrice?: number;
+  pnl?: number;
+  notes?: string;
+  direction: 'LONG' | 'SHORT';
+}

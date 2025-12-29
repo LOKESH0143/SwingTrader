@@ -6,6 +6,7 @@ import { Backtest } from './pages/Backtest';
 import { Settings } from './pages/Settings';
 import { About } from './pages/About';
 import { Tournament } from './pages/Tournament';
+import { Journal } from './pages/Journal';
 
 import { StrategyBuilder } from './pages/StrategyBuilder';
 
@@ -15,6 +16,7 @@ export default function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/tournament" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="journal" element={<Journal />} />
         <Route path="strategies" element={<Strategies />} />
         <Route path="builder" element={<StrategyBuilder />} />
         <Route path="backtest" element={<Backtest />} />
