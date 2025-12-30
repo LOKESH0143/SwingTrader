@@ -18,6 +18,9 @@ export function PortfolioSimulator() {
     minConsensusScore: 40,
     useProbabilisticExecution: false,
     allowFractionalShares: false,
+    useTrailingStop: true,
+    useMarketRegimeFilter: true,
+    useDynamicRisk: true,
     selectedStrategies: PREBUILT_STRATEGIES.map(s => s.id),
     universe: 'NIFTY_50' as StockUniverse,
     startDate: '',
@@ -47,7 +50,14 @@ export function PortfolioSimulator() {
       const data = scores[s.id];
       const avgMonthly = data ? data.avgPnL / 60 : 0;
       const recentMonthly = data ? data.recentPnL / 6 : 0;
-      const score = data ? (recentMonthly * 0.6) + (avgMonthly * 0.4) : -Infinity;
+      
+      const avgYield = data ? (data.avgPnL / (data.avgTrades || 1)) : 0;
+      const recentYield = data ? (data.recentPnL / (data.recentTrades || 1)) : 0;
+      
+      const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
+      const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
+      
+      const score = data ? (monthlyScore * Math.abs(yieldScore)) : -Infinity;
       return { ...s, score };
     });
 
@@ -87,6 +97,12 @@ export function PortfolioSimulator() {
       const allData: Record<string, any> = {};
       const scores = await getStrategyScores();
 
+      // Fetch Nifty 50 for Market Regime Filter
+      let marketData: any[] = [];
+      if (settings.useMarketRegimeFilter) {
+        marketData = await fetchHistory('^NSEI', '5y');
+      }
+
       // 1. Fetch Data
       for (let i = 0; i < symbols.length; i++) {
         const symbol = symbols[i];
@@ -104,7 +120,8 @@ export function PortfolioSimulator() {
         PREBUILT_STRATEGIES,
         allData,
         settings,
-        scores
+        scores,
+        marketData
       );
 
       setResults(simResult);
@@ -214,6 +231,69 @@ export function PortfolioSimulator() {
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 italic">Requires multiple strategies to agree before taking a trade (0-100).</p>
               </div>
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Trailing Stop Loss</label>
+                  <p className="text-[10px] text-slate-500 italic">Locks in profits by moving SL up.</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, useTrailingStop: !settings.useTrailingStop})}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                    settings.useTrailingStop ? "bg-indigo-600" : "bg-slate-300"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      settings.useTrailingStop ? "translate-x-6" : "translate-x-1"
+                    )}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Market Regime Filter</label>
+                  <p className="text-[10px] text-slate-500 italic">Stay in cash if Nifty 50 &lt; SMA 200.</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, useMarketRegimeFilter: !settings.useMarketRegimeFilter})}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                    settings.useMarketRegimeFilter ? "bg-indigo-600" : "bg-slate-300"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      settings.useMarketRegimeFilter ? "translate-x-6" : "translate-x-1"
+                    )}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Dynamic Risk Scaling</label>
+                  <p className="text-[10px] text-slate-500 italic">Bet more on high-conviction signals.</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, useDynamicRisk: !settings.useDynamicRisk})}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                    settings.useDynamicRisk ? "bg-indigo-600" : "bg-slate-300"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      settings.useDynamicRisk ? "translate-x-6" : "translate-x-1"
+                    )}
+                  />
+                </button>
+              </div>
+
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div>
                   <label className="block text-sm font-medium text-slate-700">Probabilistic Execution</label>

@@ -58,8 +58,10 @@ export interface StrategyScore {
   strategyId: string;
   avgPnL: number;
   avgWinRate: number;
+  avgTrades?: number;
   recentPnL: number;
   recentWinRate: number;
+  recentTrades?: number;
   lastUpdatedAvg?: string;
   lastUpdatedRecent?: string;
 }

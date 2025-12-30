@@ -285,7 +285,7 @@ export function Tournament() {
       const mode = overrideRange === '5y' ? 'avg' : 'recent';
       for (const res of Object.values(stats)) {
         const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
-        await updateStrategyScore(res.strategyId, res.totalPnL, winRate, mode);
+        await updateStrategyScore(res.strategyId, res.totalPnL, winRate, res.totalTrades, mode);
       }
       await loadScores();
       console.log(`[Tournament] Scores saved and reloaded.`);
@@ -681,7 +681,17 @@ export function Tournament() {
                 const scoreData = scores[res.strategyId];
                 const avgMonthly = scoreData ? scoreData.avgPnL / 60 : 0;
                 const recentMonthly = scoreData ? scoreData.recentPnL / 6 : 0;
-                const architectScore = scoreData ? (recentMonthly * 0.6) + (avgMonthly * 0.4) : null;
+                
+                // Yield per Trade (Interest Rate per Trade)
+                const avgYield = scoreData ? (scoreData.avgPnL / (scoreData.avgTrades || 1)) : 0;
+                const recentYield = scoreData ? (scoreData.recentPnL / (scoreData.recentTrades || 1)) : 0;
+                
+                const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
+                const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
+                
+                // Final Architect Score: Multiplicative for Compounding Power
+                // We use Math.abs on yield to preserve the sign of the monthly performance
+                const architectScore = scoreData ? (monthlyScore * Math.abs(yieldScore)) : null;
                 
                 return (
                   <React.Fragment key={res.strategyId}>

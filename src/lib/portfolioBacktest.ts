@@ -12,6 +12,9 @@ export interface PortfolioSettings {
   minConsensusScore: number;
   useProbabilisticExecution: boolean;
   allowFractionalShares: boolean;
+  useTrailingStop: boolean;
+  useMarketRegimeFilter: boolean;
+  useDynamicRisk: boolean;
   startDate?: string;
   endDate?: string;
   dataPeriod?: '1y' | '2y' | '5y';
@@ -38,6 +41,7 @@ export interface PortfolioTrade {
   consensusScore: number;
   stopLoss: number;
   target: number;
+  highestPrice: number; // For trailing stop
   pnl?: number;
   pnlPercent?: number;
   status: 'OPEN' | 'CLOSED';
@@ -48,7 +52,8 @@ export function runPortfolioSimulation(
   strategies: Strategy[], 
   allData: Record<string, Candle[]>, 
   settings: PortfolioSettings,
-  scores: Record<string, StrategyScore>
+  scores: Record<string, StrategyScore>,
+  marketData?: Candle[] // Nifty 50 data for regime filter
 ): PortfolioState & { maxDrawdown: number; profitFactor: number } {
   
   // 1. Setup
@@ -59,6 +64,12 @@ export function runPortfolioSimulation(
   const openTrades: PortfolioTrade[] = [];
   const tradeHistory: PortfolioTrade[] = [];
   const equityCurve: { date: string; equity: number }[] = [];
+
+  // Market Regime Calculation (SMA 200 of Nifty 50)
+  let marketSma200: number[] = [];
+  if (marketData && settings.useMarketRegimeFilter) {
+    marketSma200 = indicators.sma(marketData, 200);
+  }
 
   // 2. Get all unique dates
   const allDates = new Set<string>();
@@ -94,7 +105,14 @@ export function runPortfolioSimulation(
       const data = scores[s.id];
       const avgMonthly = data ? data.avgPnL / 60 : 0;
       const recentMonthly = data ? data.recentPnL / 6 : 0;
-      const score = data ? (recentMonthly * 0.6) + (avgMonthly * 0.4) : -1000;
+      
+      const avgYield = data ? (data.avgPnL / (data.avgTrades || 1)) : 0;
+      const recentYield = data ? (data.recentPnL / (data.recentTrades || 1)) : 0;
+      
+      const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
+      const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
+      
+      const score = data ? (monthlyScore * Math.abs(yieldScore)) : -1000;
       
       return {
         ...s,
@@ -106,6 +124,17 @@ export function runPortfolioSimulation(
 
   // 4. Chronological Simulation
   for (const date of sortedDates) {
+    // Market Regime Check
+    let isMarketBullish = true;
+    if (settings.useMarketRegimeFilter && marketData) {
+      const marketIndex = marketData.findIndex(c => c.date === date);
+      if (marketIndex >= 200) {
+        const currentMarketPrice = marketData[marketIndex].close;
+        const currentMarketSma = marketSma200[marketIndex];
+        isMarketBullish = currentMarketPrice > currentMarketSma;
+      }
+    }
+
     // A. Update Open Trades (Check for Exits)
     for (let i = openTrades.length - 1; i >= 0; i--) {
       const trade = openTrades[i];
@@ -113,6 +142,20 @@ export function runPortfolioSimulation(
       const candle = symbolData?.find(c => c.date === date);
       
       if (candle) {
+        // Update Highest Price for Trailing Stop
+        if (candle.high > trade.highestPrice) {
+          trade.highestPrice = candle.high;
+          
+          // If trailing stop is on, move stop loss up
+          if (settings.useTrailingStop) {
+            const initialRiskPercent = (trade.entryPrice - trade.stopLoss) / trade.entryPrice;
+            const newStopLoss = trade.highestPrice * (1 - initialRiskPercent);
+            if (newStopLoss > trade.stopLoss) {
+              trade.stopLoss = newStopLoss;
+            }
+          }
+        }
+
         let exitPrice = 0;
         let reason = '';
 
@@ -144,7 +187,8 @@ export function runPortfolioSimulation(
     }
 
     // B. Check for New Entries (Global Signal Auction)
-    if (cash > settings.initialCapital * 0.05 && openTrades.length < settings.maxOpenTrades) { 
+    // Only enter if market is bullish (if filter is on)
+    if (isMarketBullish && cash > settings.initialCapital * 0.05 && openTrades.length < settings.maxOpenTrades) { 
       const dailySignals: { strategy: any; symbol: string; signal: any; score: number; consensusScore: number }[] = [];
 
       // Collect ALL signals for today
@@ -226,16 +270,11 @@ export function runPortfolioSimulation(
         // --- PROBABILISTIC EXECUTION ---
         if (settings.useProbabilisticExecution) {
           const roll = Math.random() * 100;
-          if (roll > item.consensusScore) {
-            // Skip this trade based on probability
-            continue;
-          }
+          if (roll > item.consensusScore) continue;
         }
 
         const entryPrice = allData[item.symbol].find(c => c.date === date)!.close;
         const risk = entryPrice - item.signal.stopLoss;
-        const reward = item.signal.target - item.signal.stopLoss; // Corrected RR calculation
-        
         if (risk <= 0) continue;
 
         const rr = (item.signal.target - entryPrice) / risk;
@@ -244,7 +283,14 @@ export function runPortfolioSimulation(
         if (rr < settings.minRiskReward) continue;
         if (slPct > settings.maxStopLossPercent) continue;
 
-        const amountToRisk = equity * (settings.riskPerTrade / 100);
+        // Dynamic Risk Scaling
+        let riskMultiplier = 1.0;
+        if (settings.useDynamicRisk) {
+          if (item.consensusScore >= 80) riskMultiplier = 1.5;
+          else if (item.consensusScore < 60) riskMultiplier = 0.5;
+        }
+
+        const amountToRisk = equity * (settings.riskPerTrade / 100) * riskMultiplier;
         const equalAllocation = equity / settings.maxOpenTrades;
 
         // SAFE EQUAL SIZING:
@@ -268,6 +314,7 @@ export function runPortfolioSimulation(
             consensusScore: item.consensusScore,
             stopLoss: item.signal.stopLoss,
             target: item.signal.target,
+            highestPrice: entryPrice,
             status: 'OPEN',
             reason: item.signal.reason
           };

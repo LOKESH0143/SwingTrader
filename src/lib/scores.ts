@@ -27,6 +27,7 @@ export async function updateStrategyScore(
   strategyId: string, 
   pnl: number, 
   winRate: number, 
+  trades: number,
   mode: 'avg' | 'recent'
 ) {
   try {
@@ -35,17 +36,21 @@ export async function updateStrategyScore(
       strategyId,
       avgPnL: 0,
       avgWinRate: 0,
+      avgTrades: 0,
       recentPnL: 0,
-      recentWinRate: 0
+      recentWinRate: 0,
+      recentTrades: 0
     };
 
     if (mode === 'avg') {
       current.avgPnL = pnl;
       current.avgWinRate = winRate;
+      current.avgTrades = trades;
       current.lastUpdatedAvg = new Date().toISOString();
     } else {
       current.recentPnL = pnl;
       current.recentWinRate = winRate;
+      current.recentTrades = trades;
       current.lastUpdatedRecent = new Date().toISOString();
     }
 
