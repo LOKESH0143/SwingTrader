@@ -10,7 +10,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 export function PortfolioSimulator() {
   const [settings, setSettings] = useState({
-    initialCapital: 100000,
+    initialCapital: 50000,
     riskPerTrade: 2, // in percent
     minRiskReward: 2,
     maxStopLossPercent: 5,

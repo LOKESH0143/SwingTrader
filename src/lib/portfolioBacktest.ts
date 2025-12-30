@@ -290,13 +290,21 @@ export function runPortfolioSimulation(
 
         // Dynamic Risk Scaling
         let riskMultiplier = 1.0;
+        let allocationMultiplier = 1.0; // New: Allow larger position size for high conviction
+        
         if (settings.useDynamicRisk) {
-          if (item.consensusScore >= 80) riskMultiplier = 1.5;
-          else if (item.consensusScore < 60) riskMultiplier = 0.5;
+          if (item.consensusScore >= 80) {
+            riskMultiplier = 1.5; // Risk 3% instead of 2%
+            allocationMultiplier = 1.5; // Allow 1.5x the normal "Equal Slice"
+          }
+          else if (item.consensusScore < 60) {
+            riskMultiplier = 0.5; // Risk 1%
+            allocationMultiplier = 1.0; // Keep normal slice limit
+          }
         }
 
         const amountToRisk = equity * (settings.riskPerTrade / 100) * riskMultiplier;
-        const equalAllocation = equity / settings.maxOpenTrades;
+        const equalAllocation = (equity / settings.maxOpenTrades) * allocationMultiplier;
 
         // SAFE EQUAL SIZING:
         const riskBasedAllocation = amountToRisk * (entryPrice / risk);

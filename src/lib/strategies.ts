@@ -226,6 +226,13 @@ return null;
     description: 'Volume Profile Breakout with Trailing Stop logic to capture larger moves and reduce drawdown.',
     category: 'Volume Profile',
     parameters: { lookback: 50, buckets: 24, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const { vah, poc, val } = indicators.volumeProfile(data, 50, 24);
+      const curr = data[data.length-1].close;
+      if (curr > vah) return 1;
+      if (curr < val) return -1;
+      return 0.2;
+    `,
     code: `
 // Volume Profile Trend v2 (Trailing Stop)
 const vp = indicators.getVolumeProfile(data, params.lookback, params.buckets);
@@ -274,6 +281,14 @@ return null;
     description: 'Buys when price breaks 20-day high with 2x volume AND clears the Value Area High (VAH).',
     category: 'Volume Profile',
     parameters: { lookback: 20, volumeMult: 2.0, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const lookback = 20;
+      const recentHighs = data.slice(-lookback - 1, -1).map(c => c.high);
+      const maxHigh = Math.max(...recentHighs);
+      const curr = data[data.length-1].close;
+      if (curr > maxHigh) return 1;
+      return 0;
+    `,
     code: `
 // Volume Breakout Strategy with Volume Profile
 const lookback = params.lookback;
@@ -333,6 +348,14 @@ return null;
     description: 'Buys new 50-day highs with strong volume and a solid close. Filters out weak "wick" breakouts.',
     category: 'Breakout',
     parameters: { lookback: 50, volumeMult: 1.5, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const lookback = 50;
+      const recentHighs = data.slice(-lookback - 1, -1).map(c => c.high);
+      const maxHigh = Math.max(...recentHighs);
+      const curr = data[data.length-1].close;
+      if (curr > maxHigh) return 1;
+      return 0;
+    `,
     code: `
 // Institutional Breakout (50d High + Strong Close)
 const lookback = 50; // Increased to 50 (Quarterly High) for significance
@@ -553,6 +576,16 @@ return null;
     description: 'Buys on a pullback to the Middle Band (SMA 20) in a strong uptrend (Above SMA 50 + ADX > 25). Avoids buying extended tops.',
     category: 'Trend',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const sma50 = indicators.sma(data, 50);
+      const adx = indicators.adx(data, 14);
+      const curr = data[data.length-1].close;
+      const s50 = sma50[sma50.length-1];
+      const currAdx = adx[adx.length-1];
+      if (curr > s50 && currAdx > 25) return 1;
+      if (curr < s50) return -1;
+      return 0;
+    `,
     code: `
 // Bollinger Trend Rider (Optimized: Pullback + Momentum)
 const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
@@ -613,6 +646,13 @@ return null;
     description: 'Buys oversold dips ONLY in a long-term uptrend (Above SMA 200). Avoids catching falling knives.',
     category: 'Mean Reversion',
     parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const { k, d } = indicators.stochastic(data, 14, 3, 3);
+      const currK = k[k.length-1];
+      if (currK < 20) return 1; // Oversold
+      if (currK > 80) return -1; // Overbought
+      return 0;
+    `,
     code: `
 // Stochastic Dip Buyer (Trend Filter + Green Candle)
 const { k, d } = indicators.stochastic(data, params.kPeriod, 3, params.dPeriod);
@@ -678,6 +718,13 @@ return null;
     description: 'Buys when Stochastic %K crosses above %D while in oversold territory (< 20). Good for range-bound markets.',
     category: 'Mean Reversion',
     parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const { k, d } = indicators.stochastic(data, 14, 3, 3);
+      const currK = k[k.length-1];
+      if (currK < 20) return 1; // Oversold
+      if (currK > 80) return -1; // Overbought
+      return 0;
+    `,
     code: `
 // Stochastic Oversold Strategy
 const { k, d } = indicators.stochastic(data, params.kPeriod, 3, params.dPeriod);
@@ -728,6 +775,14 @@ return null;
     description: 'Buys when price breaks out of a volatility contraction pattern (Inside Bar or NR7), aligned with trend and volume.',
     category: 'Volatility',
     parameters: { defaultRiskPct: 0.03, trendSma: 50, minRsi: 50 },
+    opinionCode: `
+      const smaTrend = indicators.sma(data, 50);
+      const curr = data[data.length-1].close;
+      const trend = smaTrend[smaTrend.length-1];
+      if (curr > trend) return 0.5;
+      if (curr < trend) return -0.5;
+      return 0;
+    `,
     code: `
 // Inside Bar / NR7 Strategy with Trend & Volume
 const current = data[data.length - 1];
@@ -802,6 +857,16 @@ return null;
     description: 'Buys when a stock gaps up >2% in an uptrend (SMA 50) and holds the gain. Uses tight stops to fail fast.',
     category: 'Momentum',
     parameters: { gapPct: 0.02, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const sma50 = indicators.sma(data, 50);
+      const curr = data[data.length-1].close;
+      const prev = data[data.length-2].close;
+      const trend = sma50[sma50.length-1];
+      const gap = (data[data.length-1].open - prev) / prev;
+      if (gap > 0.02 && curr > trend) return 1;
+      if (curr < trend) return -1;
+      return 0;
+    `,
     code: `
 // Gap and Go (Optimized)
 const current = data[data.length - 1];
@@ -858,6 +923,14 @@ return null;
     description: 'Trend-aligned TTM Squeeze. Requires price > SMA 50 and active volume. Uses tighter structure-based stops.',
     category: 'Volatility',
     parameters: { defaultRiskPct: 0.05 },
+    opinionCode: `
+      const { squeezeOn, histogram } = indicators.ttmSqueeze(data);
+      const currHist = histogram[histogram.length-1];
+      const prevHist = histogram[histogram.length-2];
+      if (currHist > 0 && currHist > prevHist) return 1;
+      if (currHist < 0) return -1;
+      return 0;
+    `,
     code: `
 // TTM Squeeze Optimized (Trend Aligned + Vol)
 const { squeezeOn, histogram } = indicators.ttmSqueeze(data);
@@ -939,6 +1012,14 @@ return null;
     description: 'Buys when price sweeps a major support level (taking out retail stops) and immediately reverses. High win rate reversal setup.',
     category: 'Reversal',
     parameters: { defaultRiskPct: 0.03 },
+    opinionCode: `
+      const { supports } = indicators.findSupportResistance(data, 50);
+      const curr = data[data.length-1].close;
+      const low = data[data.length-1].low;
+      const nearest = indicators.getNearestLevel(curr, supports, 'SUPPORT');
+      if (nearest && low < nearest && curr > nearest) return 1;
+      return 0;
+    `,
     code: `
 // SMC Liquidity Sweep Strategy
 const current = data[data.length - 1];
@@ -998,6 +1079,12 @@ return null;
     description: 'Buys when a large green candle completely engulfs the previous red candle. Strong reversal signal.',
     category: 'Reversal',
     parameters: { defaultRiskPct: 0.03 },
+    opinionCode: `
+      const curr = data[data.length-1];
+      const prev = data[data.length-2];
+      if (indicators.isBullishEngulfing(curr, prev)) return 1;
+      return 0;
+    `,
     code: `
 // Bullish Engulfing Strategy
 const current = data[data.length - 1];
@@ -1036,6 +1123,11 @@ return null;
     description: 'Buys when a Hammer candle forms near a key support level. Classic "buy the dip" setup.',
     category: 'Reversal',
     parameters: { defaultRiskPct: 0.03 },
+    opinionCode: `
+      const curr = data[data.length-1];
+      if (indicators.isHammer(curr)) return 1;
+      return 0;
+    `,
     code: `
 // Hammer at Support Strategy
 const current = data[data.length - 1];
