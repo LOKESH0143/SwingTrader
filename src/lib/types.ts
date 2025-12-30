@@ -59,9 +59,11 @@ export interface StrategyScore {
   avgPnL: number;
   avgWinRate: number;
   avgTrades?: number;
+  avgHoldDays?: number;
   recentPnL: number;
   recentWinRate: number;
   recentTrades?: number;
+  recentHoldDays?: number;
   lastUpdatedAvg?: string;
   lastUpdatedRecent?: string;
 }

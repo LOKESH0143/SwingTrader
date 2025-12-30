@@ -112,7 +112,12 @@ export function runPortfolioSimulation(
       const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
       const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
       
-      const score = data ? (monthlyScore * Math.abs(yieldScore)) : -1000;
+      const avgHold = data ? (data.avgHoldDays || 1) : 1;
+      const recentHold = data ? (data.recentHoldDays || 1) : 1;
+      const timeEfficiency = (recentHold * 0.6) + (avgHold * 0.4);
+      const velocityScore = yieldScore / Math.max(1, timeEfficiency);
+      
+      const score = data ? (monthlyScore * Math.abs(velocityScore) * 100) : -1000;
       
       return {
         ...s,

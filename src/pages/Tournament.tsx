@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter, Calendar, X } from 'lucide-react';
+import { Trophy, Play, Loader2, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Filter, Calendar, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
 import { STOCK_UNIVERSES, StockUniverse } from '../lib/stockUniverses';
 import { PREBUILT_STRATEGIES } from '../lib/strategies';
@@ -46,7 +46,16 @@ export function Tournament() {
   const [results, setResults] = useState<StrategyPerformance[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_50');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'totalPnL', direction: 'desc' });
   
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   // Trade Inspector State
   const [selectedTrade, setSelectedTrade] = useState<TradeDetails | null>(null);
   const [tradeData, setTradeData] = useState<Candle[]>([]);
@@ -57,6 +66,58 @@ export function Tournament() {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [scores, setScores] = useState<Record<string, StrategyScore>>({});
   const [showSymbolList, setShowSymbolList] = useState(false);
+
+  const sortedResults = React.useMemo(() => {
+    const sortableResults = [...results];
+    if (sortConfig.key) {
+      sortableResults.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        if (sortConfig.key === 'strategyName') {
+          aValue = a.strategyName;
+          bValue = b.strategyName;
+        } else if (sortConfig.key === 'totalPnL') {
+          aValue = a.totalPnL;
+          bValue = b.totalPnL;
+        } else if (sortConfig.key === 'winRate') {
+          aValue = a.totalTrades > 0 ? (a.wins / a.totalTrades) : 0;
+          bValue = b.totalTrades > 0 ? (b.wins / b.totalTrades) : 0;
+        } else if (sortConfig.key === 'totalTrades') {
+          aValue = a.totalTrades;
+          bValue = b.totalTrades;
+        } else if (sortConfig.key === 'architectScore') {
+          const sA = scores[a.strategyId];
+          const sB = scores[b.strategyId];
+          
+          const calcScore = (s: StrategyScore | undefined) => {
+            if (!s) return -Infinity;
+            const avgMonthly = s.avgPnL / 60;
+            const recentMonthly = s.recentPnL / 6;
+            const avgYield = s.avgPnL / (s.avgTrades || 1);
+            const recentYield = s.recentPnL / (s.recentTrades || 1);
+            const avgHold = s.avgHoldDays || 1;
+            const recentHold = s.recentHoldDays || 1;
+            
+            const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
+            const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
+            const timeEfficiency = (recentHold * 0.6) + (avgHold * 0.4);
+            const velocityScore = yieldScore / Math.max(1, timeEfficiency);
+            return monthlyScore * Math.abs(velocityScore) * 100;
+          };
+          
+          aValue = calcScore(sA);
+          bValue = calcScore(sB);
+        }
+
+        if (aValue === bValue) return 0;
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sortableResults;
+  }, [results, sortConfig, scores]);
 
   useEffect(() => {
     loadScores();
@@ -285,7 +346,18 @@ export function Tournament() {
       const mode = overrideRange === '5y' ? 'avg' : 'recent';
       for (const res of Object.values(stats)) {
         const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
-        await updateStrategyScore(res.strategyId, res.totalPnL, winRate, res.totalTrades, mode);
+        
+        const totalHoldDays = res.allTrades.reduce((sum, t) => {
+          if (t.exitDate) {
+            const start = new Date(t.entryDate).getTime();
+            const end = new Date(t.exitDate).getTime();
+            return sum + (end - start) / (1000 * 60 * 60 * 24);
+          }
+          return sum;
+        }, 0);
+        const avgHoldDays = res.totalTrades > 0 ? totalHoldDays / res.totalTrades : 0;
+
+        await updateStrategyScore(res.strategyId, res.totalPnL, winRate, res.totalTrades, avgHoldDays, mode);
       }
       await loadScores();
       console.log(`[Tournament] Scores saved and reloaded.`);
@@ -634,13 +706,48 @@ export function Tournament() {
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
               <tr>
                 <th className="p-6">Rank</th>
-                <th className="p-6">Strategy</th>
-                <th className="p-6 text-right">Total Return (Sum %)</th>
+                <th className="p-6 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('strategyName')}>
+                  <div className="flex items-center gap-1">
+                    Strategy
+                    {sortConfig.key === 'strategyName' ? (
+                      sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                    ) : <ArrowUpDown size={14} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="p-6 text-right cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('totalPnL')}>
+                  <div className="flex items-center justify-end gap-1">
+                    Total Return (Sum %)
+                    {sortConfig.key === 'totalPnL' ? (
+                      sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                    ) : <ArrowUpDown size={14} className="opacity-30" />}
+                  </div>
+                </th>
                 <th className="p-6 text-right" title="Score from 5-year data">Avg Score (5Y)</th>
                 <th className="p-6 text-right" title="Score from 6-month data">Recent Score (6M)</th>
-                <th className="p-6 text-right font-semibold text-indigo-600 bg-indigo-50" title="(0.6 * Recent PnL) + (0.4 * Avg PnL)">Architect Score</th>
-                <th className="p-6 text-right">Win Rate</th>
-                <th className="p-6 text-right">Total Trades</th>
+                <th className="p-6 text-right font-semibold text-indigo-600 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors" onClick={() => requestSort('architectScore')} title="Multiplicative score based on consistency and efficiency">
+                  <div className="flex items-center justify-end gap-1">
+                    Architect Score
+                    {sortConfig.key === 'architectScore' ? (
+                      sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                    ) : <ArrowUpDown size={14} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="p-6 text-right cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('winRate')}>
+                  <div className="flex items-center justify-end gap-1">
+                    Win Rate
+                    {sortConfig.key === 'winRate' ? (
+                      sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                    ) : <ArrowUpDown size={14} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="p-6 text-right cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('totalTrades')}>
+                  <div className="flex items-center justify-end gap-1">
+                    Total Trades
+                    {sortConfig.key === 'totalTrades' ? (
+                      sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                    ) : <ArrowUpDown size={14} className="opacity-30" />}
+                  </div>
+                </th>
                 <th className="p-6 text-right">Avg Trades/Week</th>
                 <th className="p-6 text-right">Avg Hold</th>
                 <th className="p-6">Best Stock</th>
@@ -648,7 +755,7 @@ export function Tournament() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {results.map((res, index) => {
+              {sortedResults.map((res, index) => {
                 const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
                 const isExpanded = expandedId === res.strategyId;
                 
@@ -689,9 +796,18 @@ export function Tournament() {
                 const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
                 const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
                 
+                // Time Efficiency (Average Hold Days)
+                const avgHold = scoreData ? (scoreData.avgHoldDays || 1) : 1;
+                const recentHold = scoreData ? (scoreData.recentHoldDays || 1) : 1;
+                const timeEfficiency = (recentHold * 0.6) + (avgHold * 0.4);
+                
+                // Velocity = Yield per Trade / Hold Days
+                const velocityScore = yieldScore / Math.max(1, timeEfficiency);
+                
                 // Final Architect Score: Multiplicative for Compounding Power
-                // We use Math.abs on yield to preserve the sign of the monthly performance
-                const architectScore = scoreData ? (monthlyScore * Math.abs(yieldScore)) : null;
+                // We use Math.abs on velocity to preserve the sign of the monthly performance
+                // SCALING FACTOR: 100x to make scores readable (e.g. 0.2 -> 20)
+                const architectScore = scoreData ? (monthlyScore * Math.abs(velocityScore) * 100) : null;
                 
                 return (
                   <React.Fragment key={res.strategyId}>

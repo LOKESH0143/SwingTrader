@@ -57,7 +57,12 @@ export function PortfolioSimulator() {
       const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
       const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
       
-      const score = data ? (monthlyScore * Math.abs(yieldScore)) : -Infinity;
+      const avgHold = data ? (data.avgHoldDays || 1) : 1;
+      const recentHold = data ? (data.recentHoldDays || 1) : 1;
+      const timeEfficiency = (recentHold * 0.6) + (avgHold * 0.4);
+      const velocityScore = yieldScore / Math.max(1, timeEfficiency);
+      
+      const score = data ? (monthlyScore * Math.abs(velocityScore) * 100) : -Infinity;
       return { ...s, score };
     });
 
@@ -106,8 +111,24 @@ export function PortfolioSimulator() {
       // 1. Fetch Data
       for (let i = 0; i < symbols.length; i++) {
         const symbol = symbols[i];
-        // If custom dates are set, we fetch 5y to be safe, otherwise use dataPeriod
-        const fetchPeriod = (settings.startDate || settings.endDate) ? '5y' : settings.dataPeriod;
+        
+        // SMART FETCH LOGIC:
+        // Always fetch significantly more data than requested to ensure indicators (like SMA 200) are warmed up.
+        let fetchPeriod: '1y' | '2y' | '5y' | '10y' = '5y'; // Default to max for safety
+        
+        if (settings.startDate || settings.endDate) {
+           // If custom dates, just fetch max to be safe
+           fetchPeriod = '5y';
+        } else {
+           // If preset periods:
+           // 1y simulation -> fetch 2y (1y warmup + 1y sim)
+           // 2y simulation -> fetch 5y (3y warmup + 2y sim)
+           // 5y simulation -> fetch 5y (limited by API, but usually sufficient)
+           if (settings.dataPeriod === '1y') fetchPeriod = '2y';
+           else if (settings.dataPeriod === '2y') fetchPeriod = '5y';
+           else fetchPeriod = '5y';
+        }
+
         const data = await fetchHistory(symbol, fetchPeriod);
         if (data && data.length > 0) {
           allData[symbol] = data;
