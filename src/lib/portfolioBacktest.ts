@@ -9,6 +9,8 @@ export interface PortfolioSettings {
   minRiskReward: number;
   maxStopLossPercent: number;
   maxOpenTrades: number;
+  minConsensusScore: number;
+  useProbabilisticExecution: boolean;
   allowFractionalShares: boolean;
   startDate?: string;
   endDate?: string;
@@ -33,6 +35,7 @@ export interface PortfolioTrade {
   exitPrice?: number;
   shares: number;
   capitalUsed: number;
+  consensusScore: number;
   stopLoss: number;
   target: number;
   pnl?: number;
@@ -96,6 +99,7 @@ export function runPortfolioSimulation(
       return {
         ...s,
         execute: new Function('data', 'params', 'indicators', s.code),
+        getOpinion: s.opinionCode ? new Function('data', 'params', 'indicators', s.opinionCode) : null,
         score: score
       };
     });
@@ -141,7 +145,7 @@ export function runPortfolioSimulation(
 
     // B. Check for New Entries (Global Signal Auction)
     if (cash > settings.initialCapital * 0.05 && openTrades.length < settings.maxOpenTrades) { 
-      const dailySignals: { strategy: any; symbol: string; signal: any; score: number }[] = [];
+      const dailySignals: { strategy: any; symbol: string; signal: any; score: number; consensusScore: number }[] = [];
 
       // Collect ALL signals for today
       for (const strategy of strategyFunctions) {
@@ -157,50 +161,100 @@ export function runPortfolioSimulation(
           try {
             const signal = strategy.execute(historicalData, strategy.parameters, indicators);
             if (signal && signal.signal === 'BUY') {
-              dailySignals.push({ strategy, symbol, signal, score: strategy.score });
+              // --- CONSENSUS ENGINE (WEIGHTED) ---
+              // Consult other strategies for their opinion on this symbol
+              // We weight opinions by the strategy's Architect Score
+              // Strategies with negative scores get 0 weight (ignored)
+              
+              let weightedOpinionSum = 0;
+              let totalWeight = 0;
+
+              // 1. Add the triggering strategy's opinion (Triggering strategy always says +1)
+              const triggerWeight = Math.max(0, strategy.score);
+              if (triggerWeight > 0) {
+                weightedOpinionSum += (1 * triggerWeight);
+                totalWeight += triggerWeight;
+              }
+
+              // 2. Poll other strategies
+              for (const other of strategyFunctions) {
+                if (other.id === strategy.id) continue;
+                if (other.getOpinion) {
+                  const weight = Math.max(0, other.score);
+                  if (weight <= 0) continue;
+
+                  try {
+                    const opinion = other.getOpinion(historicalData, other.parameters, indicators);
+                    if (typeof opinion === 'number') {
+                      weightedOpinionSum += (opinion * weight);
+                      totalWeight += weight;
+                    }
+                  } catch (e) {}
+                }
+              }
+
+              // Normalize score to 0-100
+              // Weighted average opinion is in range [-1, 1]
+              const avgWeightedOpinion = totalWeight > 0 ? (weightedOpinionSum / totalWeight) : 0;
+              const normalizedScore = totalWeight > 0 ? ((avgWeightedOpinion + 1) * 50) : 0;
+
+              if (normalizedScore >= settings.minConsensusScore) {
+                dailySignals.push({ 
+                  strategy, 
+                  symbol, 
+                  signal, 
+                  score: strategy.score,
+                  consensusScore: normalizedScore
+                });
+              }
             }
           } catch (e) {}
         }
       }
 
-      // Sort signals by Strategy Score (Best logic gets priority)
-      dailySignals.sort((a, b) => b.score - a.score);
+      // Sort signals by Consensus Score first, then Strategy Score
+      dailySignals.sort((a, b) => {
+        if (b.consensusScore !== a.consensusScore) return b.consensusScore - a.consensusScore;
+        return b.score - a.score;
+      });
 
       // Execute top signals
       for (const item of dailySignals) {
         if (openTrades.length >= settings.maxOpenTrades) break;
         if (openTrades.some(t => t.symbol === item.symbol)) continue;
 
+        // --- PROBABILISTIC EXECUTION ---
+        if (settings.useProbabilisticExecution) {
+          const roll = Math.random() * 100;
+          if (roll > item.consensusScore) {
+            // Skip this trade based on probability
+            continue;
+          }
+        }
+
         const entryPrice = allData[item.symbol].find(c => c.date === date)!.close;
         const risk = entryPrice - item.signal.stopLoss;
-        const reward = item.signal.target - entryPrice;
+        const reward = item.signal.target - item.signal.stopLoss; // Corrected RR calculation
         
         if (risk <= 0) continue;
 
-        const rr = reward / risk;
+        const rr = (item.signal.target - entryPrice) / risk;
         const slPct = (risk / entryPrice) * 100;
 
         if (rr < settings.minRiskReward) continue;
         if (slPct > settings.maxStopLossPercent) continue;
 
         const amountToRisk = equity * (settings.riskPerTrade / 100);
-        let shares = settings.allowFractionalShares 
-          ? (amountToRisk / risk) 
-          : Math.floor(amountToRisk / risk);
-        
-        let capitalRequired = shares * entryPrice;
+        const equalAllocation = equity / settings.maxOpenTrades;
 
-        // --- SMART SIZING ---
-        // If we can't afford the "ideal" size, try to buy as many as we can with available cash
-        // But never put more than 25% of total equity into a single stock (Concentration Risk)
-        const maxAllocation = equity * 0.25;
-        if (capitalRequired > Math.min(cash, maxAllocation)) {
-          capitalRequired = Math.min(cash, maxAllocation);
-          shares = settings.allowFractionalShares 
-            ? (capitalRequired / entryPrice) 
-            : Math.floor(capitalRequired / entryPrice);
-          capitalRequired = shares * entryPrice;
-        }
+        // SAFE EQUAL SIZING:
+        const riskBasedAllocation = amountToRisk * (entryPrice / risk);
+        let capitalRequired = Math.min(cash, equalAllocation, riskBasedAllocation);
+        
+        let shares = settings.allowFractionalShares 
+          ? (capitalRequired / entryPrice) 
+          : Math.floor(capitalRequired / entryPrice);
+        capitalRequired = shares * entryPrice;
 
         if (shares > 0 && capitalRequired <= cash) {
           const newTrade: PortfolioTrade = {
@@ -211,6 +265,7 @@ export function runPortfolioSimulation(
             entryPrice: entryPrice,
             shares: shares,
             capitalUsed: capitalRequired,
+            consensusScore: item.consensusScore,
             stopLoss: item.signal.stopLoss,
             target: item.signal.target,
             status: 'OPEN',

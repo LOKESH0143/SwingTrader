@@ -15,6 +15,8 @@ export function PortfolioSimulator() {
     minRiskReward: 2,
     maxStopLossPercent: 5,
     maxOpenTrades: 5,
+    minConsensusScore: 40,
+    useProbabilisticExecution: false,
     allowFractionalShares: false,
     selectedStrategies: PREBUILT_STRATEGIES.map(s => s.id),
     universe: 'NIFTY_50' as StockUniverse,
@@ -197,6 +199,40 @@ export function PortfolioSimulator() {
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 italic">Crucial: Prevents portfolio-wide "cluster risk" during market crashes.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Min Consensus Score</label>
+                <div className="relative">
+                  <input 
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={settings.minConsensusScore}
+                    onChange={e => setSettings({...settings, minConsensusScore: parseInt(e.target.value) || 0})}
+                    className="w-full p-2 border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 italic">Requires multiple strategies to agree before taking a trade (0-100).</p>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Probabilistic Execution</label>
+                  <p className="text-[10px] text-slate-500 italic">Uses Score as % chance to enter trade.</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, useProbabilisticExecution: !settings.useProbabilisticExecution})}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                    settings.useProbabilisticExecution ? "bg-indigo-600" : "bg-slate-300"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      settings.useProbabilisticExecution ? "translate-x-6" : "translate-x-1"
+                    )}
+                  />
+                </button>
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div>
@@ -435,6 +471,7 @@ export function PortfolioSimulator() {
                       <tr>
                         <th className="px-6 py-3">Symbol</th>
                         <th className="px-6 py-3">Strategy</th>
+                        <th className="px-6 py-3 text-center">Score</th>
                         <th className="px-6 py-3">Entry Date</th>
                         <th className="px-6 py-3 text-right">PnL %</th>
                         <th className="px-6 py-3">Reason</th>
@@ -445,6 +482,16 @@ export function PortfolioSimulator() {
                         <tr key={i} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4 font-bold text-slate-900">{trade.symbol}</td>
                           <td className="px-6 py-4 text-sm text-slate-600">{trade.strategyName}</td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={cn(
+                              "px-2 py-1 rounded text-[10px] font-bold",
+                              trade.consensusScore >= 70 ? "bg-emerald-100 text-emerald-700" :
+                              trade.consensusScore >= 50 ? "bg-blue-100 text-blue-700" :
+                              "bg-slate-100 text-slate-600"
+                            )}>
+                              {Math.round(trade.consensusScore)}
+                            </span>
+                          </td>
                           <td className="px-6 py-4 text-sm text-slate-500">{new Date(trade.entryDate).toLocaleDateString()}</td>
                           <td className={cn(
                             "px-6 py-4 text-right font-mono font-bold",

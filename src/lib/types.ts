@@ -24,7 +24,8 @@ export interface Strategy {
   name: string;
   description: string;
   category?: string;
-  code: string; // The actual logic as a string
+  code: string; // Primary entry logic
+  opinionCode?: string; // Logic to provide a -1 to +1 opinion
   parameters: Record<string, number>;
   bestScore?: {
     totalPnL: number;

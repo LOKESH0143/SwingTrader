@@ -28,6 +28,17 @@ export const PREBUILT_STRATEGIES: Strategy[] = [
     description: 'Optimized Golden Cross with Advanced Support/Resistance logic. Relaxed filters to capture more moves.',
     category: 'Trend',
     parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const sma50 = indicators.sma(data, 50);
+      const sma200 = indicators.sma(data, 200);
+      const curr = data[data.length-1].close;
+      const s50 = sma50[sma50.length-1];
+      const s200 = sma200[sma200.length-1];
+      if (curr > s50 && s50 > s200) return 1; // Strong Uptrend
+      if (curr > s200) return 0.5; // Moderate Uptrend
+      if (curr < s200) return -1; // Downtrend
+      return 0;
+    `,
     code: `
 // Optimized Golden Cross (Trend + Advanced S&R)
 const fastSMA = indicators.sma(data, params.fastPeriod); // 50
@@ -102,6 +113,14 @@ return null;
     description: 'Buys when the stock is in an uptrend but temporarily oversold. Uses Support/Resistance for exits.',
     category: 'Mean Reversion',
     parameters: { rsiPeriod: 14, rsiThreshold: 30, trendSma: 200, defaultRiskPct: 0.08 },
+    opinionCode: `
+      const rsi = indicators.rsi(data, 14);
+      const currRsi = rsi[rsi.length-1];
+      if (currRsi < 30) return 1; // Oversold
+      if (currRsi > 70) return -1; // Overbought
+      if (currRsi < 50) return 0.5; // Bullish Bias
+      return 0;
+    `,
     code: `
 // RSI Pullback Strategy with Support/Resistance
 const rsi = indicators.rsi(data, params.rsiPeriod);
@@ -154,6 +173,13 @@ return null;
     description: 'Buys when price breaks out above Value Area High (VAH) in an uptrend. Uses POC as support.',
     category: 'Volume Profile',
     parameters: { lookback: 50, buckets: 24, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const { vah, poc, val } = indicators.volumeProfile(data, 50, 24);
+      const curr = data[data.length-1].close;
+      if (curr > vah) return 1;
+      if (curr < val) return -1;
+      return 0.2;
+    `,
     code: `
 // Volume Profile Trend
 const vp = indicators.getVolumeProfile(data, params.lookback, params.buckets);
@@ -374,6 +400,14 @@ return null;
     description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter. Uses Advanced S&R.',
     category: 'Trend',
     parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, minAdx: 20 },
+    opinionCode: `
+      const { macdLine, signalLine } = indicators.macd(data, 12, 26, 9);
+      const curr = macdLine[macdLine.length-1];
+      const sig = signalLine[signalLine.length-1];
+      if (curr > sig && curr > 0) return 1;
+      if (curr < sig && curr < 0) return -1;
+      return 0;
+    `,
     code: `
 // MACD Standard v2 (Smart Trend + Advanced S&R)
 const { macdLine, signalLine } = indicators.macd(data, params.fast, params.slow, params.signal);
@@ -441,6 +475,13 @@ return null;
     description: 'Buys when price breaks Upper Band with expanding bandwidth and high volume. Uses Advanced S&R.',
     category: 'Volatility',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
+    opinionCode: `
+      const { upper, lower } = indicators.bollingerBands(data, 20, 2);
+      const curr = data[data.length-1].close;
+      if (curr > upper) return 1;
+      if (curr < lower) return -1;
+      return 0;
+    `,
     code: `
 // Bollinger Band Squeeze v2 (True Expansion + Volume + Advanced S&R)
 const { upper, middle, lower } = indicators.bollingerBands(data, params.period, params.multiplier);
