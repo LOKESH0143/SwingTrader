@@ -65,6 +65,33 @@ export function Tournament() {
   const loadScores = async () => {
     const data = await getStrategyScores();
     setScores(data);
+    
+    // If we don't have active results yet, populate the table with a "Leaderboard" view
+    // based on the saved scores.
+    if (results.length === 0) {
+      const leaderboard = PREBUILT_STRATEGIES.map(s => {
+        const scoreData = data[s.id];
+        return {
+          strategyId: s.id,
+          strategyName: s.name,
+          totalTrades: 0,
+          wins: 0,
+          totalPnL: 0, // Current run PnL is 0 until run
+          bestSymbol: '-',
+          bestSymbolPnL: 0,
+          allTrades: []
+        };
+      });
+
+      // Sort leaderboard by Architect Score if possible
+      leaderboard.sort((a, b) => {
+        const scoreA = data[a.strategyId] ? (data[a.strategyId].recentPnL * 0.6) + (data[a.strategyId].avgPnL * 0.4) : -Infinity;
+        const scoreB = data[b.strategyId] ? (data[b.strategyId].recentPnL * 0.6) + (data[b.strategyId].avgPnL * 0.4) : -Infinity;
+        return scoreB - scoreA;
+      });
+
+      setResults(leaderboard);
+    }
   };
 
   const handleAIAnalysis = async () => {
@@ -132,6 +159,7 @@ export function Tournament() {
   } | null>(null);
 
   const runTournament = async (overrideRange?: '5y' | '6m') => {
+    console.log(`[Tournament] Starting run with overrideRange: ${overrideRange}`);
     setRunning(true);
     setResults([]);
     setProgress(0);
@@ -140,24 +168,45 @@ export function Tournament() {
     const universeName = STOCK_UNIVERSES[selectedUniverse].name;
     const universeSymbols = STOCK_UNIVERSES[selectedUniverse].symbols;
     const totalSymbols = universeSymbols.length;
+    console.log(`[Tournament] Universe: ${universeName}, Symbols: ${totalSymbols}`);
     
-    // Determine effective date range
-    let period: '6m' | '1y' | '2y' | '5y' = '1y';
+    // Create a mutable copy of filters for this specific run
+    const runFilters: TradeFilters = { ...filters };
+    let fetchPeriod: '6m' | '1y' | '2y' | '5y' = '1y';
+    let displayPeriod: string = '1y';
+
     if (overrideRange) {
-      period = overrideRange;
-    } else if (filters.startDate || filters.endDate) {
-      period = '5y';
+      displayPeriod = overrideRange;
+      // When using an override button, we ignore any manual date inputs to avoid confusion
+      runFilters.startDate = undefined;
+      runFilters.endDate = undefined;
+
+      if (overrideRange === '6m') {
+        // For a 6-month TEST, we FETCH 2 years of data for indicator warmup
+        fetchPeriod = '2y';
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        runFilters.startDate = sixMonthsAgo.toISOString().split('T')[0];
+      } else { // 5y
+        fetchPeriod = '5y';
+      }
+    } else if (runFilters.startDate || runFilters.endDate) {
+      // For a manual date range, fetch enough data to cover it
+      fetchPeriod = '5y';
+      displayPeriod = 'Custom';
     }
     
-    const effectiveStartDate = filters.startDate || `(Default: Last ${period})`;
-    const effectiveEndDate = filters.endDate || '(Default: Today)';
+    console.log(`[Tournament] Fetching: ${fetchPeriod}, Backtesting: ${displayPeriod}`);
+    
+    const effectiveStartDate = runFilters.startDate || `(Default: Last ${displayPeriod})`;
+    const effectiveEndDate = runFilters.endDate || '(Default: Today)';
 
     setExecutionDetails({
       universeName,
       symbolCount: totalSymbols,
       startDate: effectiveStartDate,
       endDate: effectiveEndDate,
-      period
+      period: displayPeriod
     });
 
     const stats: Record<string, StrategyPerformance> = {};
@@ -183,17 +232,15 @@ export function Tournament() {
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
-          const data = await fetchHistory(symbol, period);
+          console.log(`[Tournament] Fetching history for ${symbol} with period ${fetchPeriod}`);
+          const data = await fetchHistory(symbol, fetchPeriod);
+          console.log(`[Tournament] Received ${data.length} candles for ${symbol}`);
           
           PREBUILT_STRATEGIES.forEach(strategy => {
-            const activeFilters: TradeFilters = { ...filters };
-            if (!activeFilters.minRiskReward) delete activeFilters.minRiskReward;
-            if (!activeFilters.maxStopLossPercent) delete activeFilters.maxStopLossPercent;
-            if (!activeFilters.minTargetPercent) delete activeFilters.minTargetPercent;
-            if (!activeFilters.startDate) delete activeFilters.startDate;
-            if (!activeFilters.endDate) delete activeFilters.endDate;
-
-            const result = runBacktest(strategy, data, activeFilters);
+            console.log(`[Tournament] Running backtest for ${strategy.name} on ${symbol} with ${data.length} candles`);
+            // Pass the consistent runFilters object to the backtester
+            const result = runBacktest(strategy, data, runFilters);
+            console.log(`[Tournament] Backtest result for ${strategy.name} on ${symbol}:`, result.metrics);
             const sStats = stats[strategy.id];
             
             sStats.totalTrades += result.metrics.totalTrades;
@@ -234,15 +281,18 @@ export function Tournament() {
 
     // Save scores if in override mode
     if (overrideRange) {
+      console.log(`[Tournament] Saving scores for mode: ${overrideRange}`);
       const mode = overrideRange === '5y' ? 'avg' : 'recent';
       for (const res of Object.values(stats)) {
         const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
         await updateStrategyScore(res.strategyId, res.totalPnL, winRate, mode);
       }
       await loadScores();
+      console.log(`[Tournament] Scores saved and reloaded.`);
     }
 
     setRunning(false);
+    console.log(`[Tournament] Run finished.`);
   };
 
   return (
@@ -588,6 +638,7 @@ export function Tournament() {
                 <th className="p-6 text-right">Total Return (Sum %)</th>
                 <th className="p-6 text-right" title="Score from 5-year data">Avg Score (5Y)</th>
                 <th className="p-6 text-right" title="Score from 6-month data">Recent Score (6M)</th>
+                <th className="p-6 text-right font-semibold text-indigo-600 bg-indigo-50" title="(0.6 * Recent PnL) + (0.4 * Avg PnL)">Architect Score</th>
                 <th className="p-6 text-right">Win Rate</th>
                 <th className="p-6 text-right">Total Trades</th>
                 <th className="p-6 text-right">Avg Trades/Week</th>
@@ -626,6 +677,11 @@ export function Tournament() {
                 });
                 
                 const avgHoldDays = closedTradesCount > 0 ? totalHoldDays / closedTradesCount : 0;
+
+                const scoreData = scores[res.strategyId];
+                const avgMonthly = scoreData ? scoreData.avgPnL / 60 : 0;
+                const recentMonthly = scoreData ? scoreData.recentPnL / 6 : 0;
+                const architectScore = scoreData ? (recentMonthly * 0.6) + (avgMonthly * 0.4) : null;
                 
                 return (
                   <React.Fragment key={res.strategyId}>
@@ -684,6 +740,9 @@ export function Tournament() {
                           );
                         })()}
                       </td>
+                      <td className="p-6 text-right text-indigo-700 font-mono font-bold text-base bg-indigo-50">
+                        {architectScore !== null ? architectScore.toFixed(1) : '-'}
+                      </td>
                       <td className="p-6 text-right text-slate-700">
                         {winRate.toFixed(1)}%
                       </td>
@@ -706,7 +765,7 @@ export function Tournament() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-slate-50">
-                        <td colSpan={11} className="p-6">
+                        <td colSpan={12} className="p-6">
                           <div className="grid grid-cols-2 gap-8">
                             <div>
                               <h4 className="text-sm font-semibold text-green-700 mb-3 flex items-center gap-2">

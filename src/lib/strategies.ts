@@ -20,36 +20,13 @@ export function saveCustomStrategy(strategy: Strategy) {
   }
 }
 
-export function saveStrategyScore(id: string, score: { totalPnL: number; winRate: number }) {
-  try {
-    const scores = JSON.parse(localStorage.getItem('strategy_scores') || '{}');
-    const currentBest = scores[id];
-    
-    // Only update if better (simple logic: higher PnL)
-    if (!currentBest || score.totalPnL > currentBest.totalPnL) {
-      scores[id] = { ...score, date: new Date().toISOString() };
-      localStorage.setItem('strategy_scores', JSON.stringify(scores));
-    }
-  } catch (e) {
-    console.error("Failed to save strategy score", e);
-  }
-}
-
-export function getStrategyScore(id: string) {
-  try {
-    const scores = JSON.parse(localStorage.getItem('strategy_scores') || '{}');
-    return scores[id];
-  } catch (e) {
-    return null;
-  }
-}
-
 export const PREBUILT_STRATEGIES: Strategy[] = [
   // --- GOLDEN CROSS ---
   {
     id: 'golden-cross-v2',
     name: 'Golden Cross (v2: Advanced S&R)',
     description: 'Optimized Golden Cross with Advanced Support/Resistance logic. Relaxed filters to capture more moves.',
+    category: 'Trend',
     parameters: { fastPeriod: 50, slowPeriod: 200, defaultRiskPct: 0.05 },
     code: `
 // Optimized Golden Cross (Trend + Advanced S&R)
@@ -123,6 +100,7 @@ return null;
     id: 'rsi-pullback',
     name: 'RSI Pullback (Smart S/R)',
     description: 'Buys when the stock is in an uptrend but temporarily oversold. Uses Support/Resistance for exits.',
+    category: 'Mean Reversion',
     parameters: { rsiPeriod: 14, rsiThreshold: 30, trendSma: 200, defaultRiskPct: 0.08 },
     code: `
 // RSI Pullback Strategy with Support/Resistance
@@ -174,6 +152,7 @@ return null;
     id: 'vp-trend',
     name: 'Volume Profile Trend',
     description: 'Buys when price breaks out above Value Area High (VAH) in an uptrend. Uses POC as support.',
+    category: 'Volume Profile',
     parameters: { lookback: 50, buckets: 24, defaultRiskPct: 0.05 },
     code: `
 // Volume Profile Trend
@@ -219,6 +198,7 @@ return null;
     id: 'vp-trend-v2',
     name: 'Volume Profile Trend (Optimized v2)',
     description: 'Volume Profile Breakout with Trailing Stop logic to capture larger moves and reduce drawdown.',
+    category: 'Volume Profile',
     parameters: { lookback: 50, buckets: 24, defaultRiskPct: 0.05 },
     code: `
 // Volume Profile Trend v2 (Trailing Stop)
@@ -266,6 +246,7 @@ return null;
     id: 'breakout-vol',
     name: 'Volume Breakout (Volume Profile)',
     description: 'Buys when price breaks 20-day high with 2x volume AND clears the Value Area High (VAH).',
+    category: 'Volume Profile',
     parameters: { lookback: 20, volumeMult: 2.0, defaultRiskPct: 0.05 },
     code: `
 // Volume Breakout Strategy with Volume Profile
@@ -324,6 +305,7 @@ return null;
     id: 'institutional-breakout',
     name: 'Institutional Breakout (50d High + Vol)',
     description: 'Buys new 50-day highs with strong volume and a solid close. Filters out weak "wick" breakouts.',
+    category: 'Breakout',
     parameters: { lookback: 50, volumeMult: 1.5, defaultRiskPct: 0.05 },
     code: `
 // Institutional Breakout (50d High + Strong Close)
@@ -390,6 +372,7 @@ return null;
     id: 'macd-standard',
     name: 'MACD (Standard v2)',
     description: 'Standard MACD Crossover with Trend (SMA 200) and basic ADX (>20) filter. Uses Advanced S&R.',
+    category: 'Trend',
     parameters: { fast: 12, slow: 26, signal: 9, trendSma: 200, maxRsi: 70, minAdx: 20 },
     code: `
 // MACD Standard v2 (Smart Trend + Advanced S&R)
@@ -456,6 +439,7 @@ return null;
     id: 'bb-squeeze',
     name: 'Bollinger Band Squeeze (True Expansion v2)',
     description: 'Buys when price breaks Upper Band with expanding bandwidth and high volume. Uses Advanced S&R.',
+    category: 'Volatility',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
     code: `
 // Bollinger Band Squeeze v2 (True Expansion + Volume + Advanced S&R)
@@ -526,6 +510,7 @@ return null;
     id: 'bb-trend-rider',
     name: 'Bollinger Trend Rider (Optimized)',
     description: 'Buys on a pullback to the Middle Band (SMA 20) in a strong uptrend (Above SMA 50 + ADX > 25). Avoids buying extended tops.',
+    category: 'Trend',
     parameters: { period: 20, multiplier: 2, defaultRiskPct: 0.05 },
     code: `
 // Bollinger Trend Rider (Optimized: Pullback + Momentum)
@@ -585,6 +570,7 @@ return null;
     id: 'stoch-dip-buyer',
     name: 'Stochastic Dip Buyer (Trend Filter + Green Candle)',
     description: 'Buys oversold dips ONLY in a long-term uptrend (Above SMA 200). Avoids catching falling knives.',
+    category: 'Mean Reversion',
     parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05 },
     code: `
 // Stochastic Dip Buyer (Trend Filter + Green Candle)
@@ -649,6 +635,7 @@ return null;
     id: 'stoch-oversold',
     name: 'Stochastic Oversold',
     description: 'Buys when Stochastic %K crosses above %D while in oversold territory (< 20). Good for range-bound markets.',
+    category: 'Mean Reversion',
     parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05 },
     code: `
 // Stochastic Oversold Strategy
@@ -698,6 +685,7 @@ return null;
     id: 'inside-bar-nr7',
     name: 'Inside Bar / NR7 (Smart Trend)',
     description: 'Buys when price breaks out of a volatility contraction pattern (Inside Bar or NR7), aligned with trend and volume.',
+    category: 'Volatility',
     parameters: { defaultRiskPct: 0.03, trendSma: 50, minRsi: 50 },
     code: `
 // Inside Bar / NR7 Strategy with Trend & Volume
@@ -771,6 +759,7 @@ return null;
     id: 'gap-and-go',
     name: 'Gap and Go (Optimized)',
     description: 'Buys when a stock gaps up >2% in an uptrend (SMA 50) and holds the gain. Uses tight stops to fail fast.',
+    category: 'Momentum',
     parameters: { gapPct: 0.02, defaultRiskPct: 0.05 },
     code: `
 // Gap and Go (Optimized)
@@ -826,6 +815,7 @@ return null;
     id: 'ttm-squeeze',
     name: 'TTM Squeeze (Optimized)',
     description: 'Trend-aligned TTM Squeeze. Requires price > SMA 50 and active volume. Uses tighter structure-based stops.',
+    category: 'Volatility',
     parameters: { defaultRiskPct: 0.05 },
     code: `
 // TTM Squeeze Optimized (Trend Aligned + Vol)
@@ -906,6 +896,7 @@ return null;
     id: 'smc-liquidity-sweep',
     name: 'SMC Liquidity Sweep (Turtle Soup)',
     description: 'Buys when price sweeps a major support level (taking out retail stops) and immediately reverses. High win rate reversal setup.',
+    category: 'Reversal',
     parameters: { defaultRiskPct: 0.03 },
     code: `
 // SMC Liquidity Sweep Strategy
@@ -964,6 +955,7 @@ return null;
     id: 'candle-engulfing',
     name: 'Bullish Engulfing (Reversal)',
     description: 'Buys when a large green candle completely engulfs the previous red candle. Strong reversal signal.',
+    category: 'Reversal',
     parameters: { defaultRiskPct: 0.03 },
     code: `
 // Bullish Engulfing Strategy
@@ -1001,6 +993,7 @@ return null;
     id: 'candle-hammer',
     name: 'Hammer at Support',
     description: 'Buys when a Hammer candle forms near a key support level. Classic "buy the dip" setup.',
+    category: 'Reversal',
     parameters: { defaultRiskPct: 0.03 },
     code: `
 // Hammer at Support Strategy
@@ -1045,6 +1038,7 @@ return null;
     id: 'fib-golden-zone',
     name: 'Fibonacci Golden Zone (Pullback)',
     description: 'Buys when price retraces to the 50%-61.8% zone in an uptrend and bounces. High probability setup.',
+    category: 'Mean Reversion',
     parameters: { lookback: 50, defaultRiskPct: 0.05 },
     code: `
 // Fibonacci Golden Zone Strategy

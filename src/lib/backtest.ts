@@ -42,6 +42,7 @@ export interface TradeFilters {
 }
 
 export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeFilters): BacktestResult {
+  console.log(`[Backtest] Running ${strategy.id} with ${data.length} candles.`);
   const trades: Trade[] = [];
   let openTrade: Trade | null = null;
   let maxEquity = 0;
@@ -50,6 +51,17 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
 
   // We need enough data for indicators
   const warmupPeriod = 200; 
+
+  if (data.length < 50) {
+    console.log(`[Backtest] Insufficient data (${data.length} < 50), skipping.`);
+    // Not enough data to even run basic indicators, return empty result
+    return {
+      strategyId: strategy.id,
+      symbol: 'N/A',
+      trades: [],
+      metrics: { totalTrades: 0, winRate: 0, netProfit: 0, maxDrawdown: 0, profitFactor: 0 }
+    };
+  }
 
   // Create a safe execution environment for the user code
   const executeStrategy = new Function(
@@ -68,15 +80,23 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
     const foundIndex = data.findIndex(c => new Date(c.date).getTime() >= startFilter);
     
     if (foundIndex === -1) {
-       startIndex = data.length + 1; 
-    } else if (foundIndex > warmupPeriod) {
-       startIndex = foundIndex;
+       startIndex = data.length + 1; // This will correctly result in 0 trades
+    } else {
+       // Ensure we still respect a minimum warmup if possible
+       startIndex = Math.max(foundIndex, 50);
     }
   } else {
     // Default Behavior: If NO start date filter is provided, run on ALL available data
-    // starting after the warmup period.
-    startIndex = Math.min(warmupPeriod, data.length);
+    // starting after a dynamic warmup period.
+    startIndex = Math.min(warmupPeriod, 50);
   }
+
+  // Final check to ensure startIndex is valid and doesn't exceed endIndex
+  if (startIndex > endIndex) {
+    startIndex = endIndex;
+  }
+
+  console.log(`[Backtest] Data Length: ${data.length}, Warmup: ${warmupPeriod}, Start Index: ${startIndex}, End Index: ${endIndex}`);
 
   let endFilterTime = 0;
   if (filters?.endDate) {

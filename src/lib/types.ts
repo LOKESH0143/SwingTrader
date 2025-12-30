@@ -23,6 +23,7 @@ export interface Strategy {
   id: string;
   name: string;
   description: string;
+  category?: string;
   code: string; // The actual logic as a string
   parameters: Record<string, number>;
   bestScore?: {

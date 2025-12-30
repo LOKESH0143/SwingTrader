@@ -7,6 +7,10 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const JOURNAL_FILE = './data/journal.json';
+const SCORES_FILE = './data/scores.json';
+
+// Initialize Yahoo Finance instance
+const yf = new (yahooFinance as any)();
 
 async function startServer() {
   const app = express();
@@ -172,8 +176,8 @@ async function startServer() {
           if (cachedStart <= requiredStart.getTime() + (10 * 24 * 60 * 60 * 1000)) {
             console.log(`[Cache] Hit for ${symbol} (Range: ${range})`);
             
-            // Filter cached data to match the requested range
-            const filteredData = cachedData.filter((c: any) => new Date(c.date).getTime() >= requiredStart.getTime());
+            // Filter cached data to only return the requested range
+            const filteredData = cachedData.filter(c => new Date(c.date).getTime() >= requiredStart.getTime());
             res.json(filteredData);
             return;
           } else {
@@ -196,7 +200,7 @@ async function startServer() {
       let result: any[] = [];
       try {
         // Use yf.chart as it is more robust for NSE/BSE symbols
-        const chartResult = await yahooFinance.chart(symbol, {
+        const chartResult = await yf.chart(symbol, {
           period1: startDate,
           period2: endDate,
           interval: interval as any
@@ -219,7 +223,7 @@ async function startServer() {
       } catch (chartError: any) {
         console.warn(`[Yahoo] Chart fetch failed for ${symbol}, trying historical fallback...`, chartError.message);
         // Fallback to historical
-        const historicalResult = await yahooFinance.historical(symbol, {
+        const historicalResult = await yf.historical(symbol, {
           period1: startDate,
           period2: endDate,
           interval: interval as any
