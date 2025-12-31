@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "seed": "tsx scripts/seed_data.ts"
+    "seed": "tsx scripts/seed_data.ts",
+    "fetch-data": "tsx scripts/fetch-stocks.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
