@@ -31,7 +31,8 @@ export function Dashboard() {
       await Promise.all(chunk.map(async (symbol) => {
         try {
           // Fetch last 300 days (enough for 200 SMA)
-          const data = await fetchHistory(symbol, '1y'); // Using 1y to be safe
+          // FORCE REFRESH for Live Scan
+          const data = await fetchHistory(symbol, '1y', true); 
           
           // Check ALL strategies
           for (const strategy of PREBUILT_STRATEGIES) {

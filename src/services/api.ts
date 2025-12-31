@@ -1,17 +1,35 @@
 import { Candle } from '../lib/types';
 
-export async function fetchHistory(symbol: string, range: '6m' | '1y' | '2y' | '5y' = '1y'): Promise<Candle[]> {
+export async function fetchHistory(symbol: string, range: '6m' | '1y' | '2y' | '5y' = '1y', forceRefresh = false): Promise<Candle[]> {
   try {
-    const response = await fetch(`/api/history/${symbol}?range=${range}`);
+    const response = await fetch(`/api/history/${symbol}?range=${range}&force=${forceRefresh}`);
     if (!response.ok) {
       const errorText = await response.text();
       console.warn(`[API] Error fetching ${symbol}:`, response.status, errorText);
+      
+      // Dispatch Error Event
+      window.dispatchEvent(new CustomEvent('api-status-change', { 
+        detail: { status: 'error', message: `API Error: ${response.status}` } 
+      }));
+      
       return []; // Return empty array on error
     }
+    
+    // Dispatch Success Event
+    window.dispatchEvent(new CustomEvent('api-status-change', { 
+      detail: { status: 'connected', message: 'Connected' } 
+    }));
+
     const data = await response.json();
     return data;
   } catch (error) {
     console.warn(`[API] Network error for ${symbol}:`, error);
+    
+    // Dispatch Network Error Event
+    window.dispatchEvent(new CustomEvent('api-status-change', { 
+      detail: { status: 'error', message: 'Network Error' } 
+    }));
+    
     return []; // Return empty array on network error
   }
 }

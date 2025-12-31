@@ -6,42 +6,42 @@ import { Candle } from './types';
 const dbPath = path.resolve('data/market_data.db');
 const dbDir = path.dirname(dbPath);
 
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+try {
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+} catch (e) {
+  console.error("Failed to create data directory:", e);
 }
 
-const db = new Database(dbPath);
-
-// Initialize DB
-db.exec(`
-  CREATE TABLE IF NOT EXISTS candles (
-    symbol TEXT,
-    date TEXT,
-    open REAL,
-    high REAL,
-    low REAL,
-    close REAL,
-    volume REAL,
-    PRIMARY KEY (symbol, date)
-  );
-  CREATE INDEX IF NOT EXISTS idx_symbol_date ON candles(symbol, date);
-`);
+let db: any;
+try {
+  db = new Database(dbPath);
+  // Initialize DB
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS candles (
+      symbol TEXT,
+      date TEXT,
+      open REAL,
+      high REAL,
+      low REAL,
+      close REAL,
+      volume REAL,
+      PRIMARY KEY (symbol, date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_symbol_date ON candles(symbol, date);
+  `);
+} catch (e) {
+  console.error("Failed to initialize database:", e);
+  // Fallback in-memory DB to prevent crash
+  db = new Database(':memory:');
+}
 
 export function getCachedCandles(symbol: string, days: number): Candle[] | null {
-  // Check if we have recent data (e.g., from today/yesterday)
+  // Check if we have ANY data
   const lastRow = db.prepare('SELECT date FROM candles WHERE symbol = ? ORDER BY date DESC LIMIT 1').get(symbol) as { date: string } | undefined;
   
   if (!lastRow) return null;
-
-  // If data is older than 24 hours, consider it stale for a "live" scan (simplified logic)
-  // For swing trading, we just need to ensure we have up to the last closed market day.
-  const lastDate = new Date(lastRow.date);
-  const now = new Date();
-  const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
-  
-  // If market is open or data is old, we might want to refresh. 
-  // For now, let's use a simple cache policy: if we have data < 12 hours old, use it.
-  if (diffHours > 24) return null;
 
   const rows = db.prepare(`
     SELECT date, open, high, low, close, volume 
@@ -51,6 +51,11 @@ export function getCachedCandles(symbol: string, days: number): Candle[] | null 
   `).all(symbol) as Candle[];
 
   return rows;
+}
+
+export function getLastCandleDate(symbol: string): string | null {
+  const row = db.prepare('SELECT date FROM candles WHERE symbol = ? ORDER BY date DESC LIMIT 1').get(symbol) as { date: string } | undefined;
+  return row ? row.date : null;
 }
 
 export function saveCandles(symbol: string, candles: Candle[]) {

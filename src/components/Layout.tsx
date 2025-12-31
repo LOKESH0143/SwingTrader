@@ -1,7 +1,8 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, LineChart, Settings, ListTodo, History, BrainCircuit, Book, Trophy, Sparkles, BookOpen, BarChart } from 'lucide-react';
+import { LayoutDashboard, LineChart, Settings, ListTodo, History, BrainCircuit, Book, Trophy, Sparkles, BookOpen, BarChart, Wifi } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { ConnectionStatus } from './ConnectionStatus';
 
 export function Layout() {
   return (
@@ -26,11 +27,14 @@ export function Layout() {
           <NavItem to="/backtest" icon={<History />} label="Backtest" />
           <NavItem to="/tournament" icon={<Trophy />} label="Tournament" />
           <NavItem to="/simulator" icon={<BarChart />} label="Simulator" />
+          <NavItem to="/connection" icon={<Wifi />} label="Diagnostics" />
           <NavItem to="/settings" icon={<Settings />} label="Settings" />
           <NavItem to="/about" icon={<Book />} label="Documentation" />
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-4">
+          <ConnectionStatus />
+          
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/50">
             <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold">
               US

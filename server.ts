@@ -1,7 +1,8 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import yahooFinance from 'yahoo-finance2';
-import { getCachedCandles, saveCandles } from './src/lib/db';
+import { getCachedCandles, saveCandles, getLastCandleDate } from './src/lib/db';
+import { NIFTY_500_SYMBOLS } from './src/lib/nifty500';
 import http from 'http';
 import fs from 'fs/promises';
 import path from 'path';
@@ -9,8 +10,71 @@ import path from 'path';
 const JOURNAL_FILE = './data/journal.json';
 const SCORES_FILE = './data/scores.json';
 
-// Initialize Yahoo Finance instance
-const yf = new (yahooFinance as any)();
+// Initialize Yahoo Finance instance with custom config
+// This mimics a real browser to bypass bot detection
+const yf = new (yahooFinance as any)({
+  httpOptions: {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+  }
+});
+
+// --- SERVER-SIDE RATE LIMITER ---
+class RequestQueue {
+  private queue: (() => Promise<void>)[] = [];
+  private activeCount = 0;
+  private concurrency = 1; 
+  private delay = 500; // Reduced to 500ms for better UX while maintaining safety
+
+  add<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          const result = await this.executeWithRetry(fn);
+          resolve(result);
+        } catch (e) {
+          reject(e);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async executeWithRetry<T>(fn: () => Promise<T>, retries = 3, backoff = 5000): Promise<T> {
+    try {
+      return await fn();
+    } catch (error: any) {
+      if (retries > 0 && (error.message?.includes('Too Many Requests') || error.message?.includes('429'))) {
+        console.log(`[Rate Limit] Hit 429. Waiting ${backoff}ms before retry... (${retries} left)`);
+        await new Promise(r => setTimeout(r, backoff));
+        return this.executeWithRetry(fn, retries - 1, backoff * 2); // Exponential backoff
+      }
+      throw error;
+    }
+  }
+
+  private async process() {
+    if (this.activeCount >= this.concurrency || this.queue.length === 0) return;
+
+    this.activeCount++;
+    const task = this.queue.shift();
+    
+    if (task) {
+      try {
+        await task();
+      } finally {
+        setTimeout(() => {
+          this.activeCount--;
+          this.process();
+        }, this.delay);
+      }
+    }
+  }
+}
+
+const yahooLimiter = new RequestQueue();
+// --------------------------------
 
 async function startServer() {
   const app = express();
@@ -156,88 +220,110 @@ async function startServer() {
 
   app.get("/api/history/:symbol", async (req, res) => {
     const { symbol } = req.params;
-    const { interval = '1d', range = '1y' } = req.query;
+    const { interval = '1d', range = '1y', force = 'false' } = req.query;
+    const isForce = force === 'true';
+
     try {
-      // 1. Try Cache First (Only for daily data)
-      if (interval === '1d') {
-        const cachedData = getCachedCandles(symbol, 365);
-        if (cachedData && cachedData.length > 0) {
-          // Check if cached data covers the requested range
-          const cachedStart = new Date(cachedData[0].date).getTime();
-          let requiredStart = new Date();
+      // 1. Check Cache
+      const cachedData = getCachedCandles(symbol, 365);
+      const lastDateStr = getLastCandleDate(symbol);
+      
+      let shouldFetch = true;
+      let fetchStartDate = new Date();
+      
+      if (!isForce && cachedData && cachedData.length > 0 && lastDateStr) {
+        const lastDate = new Date(lastDateStr);
+        const now = new Date();
+        const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
+
+        // If data is less than 48 hours old (or it's the weekend), use cache
+        if (diffHours < 48) {
+          console.log(`[Cache] Hit for ${symbol} (Fresh enough)`);
           
+          // Filter for requested range
+          let requiredStart = new Date();
           if (range === '5y') requiredStart.setFullYear(requiredStart.getFullYear() - 5);
           else if (range === '2y') requiredStart.setFullYear(requiredStart.getFullYear() - 2);
           else if (range === '1y') requiredStart.setFullYear(requiredStart.getFullYear() - 1);
           else requiredStart.setMonth(requiredStart.getMonth() - 6);
-
-          // Allow a small buffer (e.g., 10 days) for holidays/weekends
-          // If cached data starts BEFORE or roughly AT the required start date, it's good.
-          if (cachedStart <= requiredStart.getTime() + (10 * 24 * 60 * 60 * 1000)) {
-            console.log(`[Cache] Hit for ${symbol} (Range: ${range})`);
-            
-            // Filter cached data to only return the requested range
-            const filteredData = cachedData.filter(c => new Date(c.date).getTime() >= requiredStart.getTime());
-            res.json(filteredData);
-            return;
-          } else {
-            console.log(`[Cache] Miss for ${symbol}: Insufficient history. Have ${cachedData[0].date}, Need ${requiredStart.toISOString().split('T')[0]}`);
-          }
+          
+          const filtered = cachedData.filter(c => new Date(c.date).getTime() >= requiredStart.getTime());
+          res.json(filtered);
+          return;
         }
+        
+        // If we have data but it's old, only fetch the missing part
+        console.log(`[Cache] Stale for ${symbol}. Last: ${lastDateStr}. Fetching update...`);
+        fetchStartDate = new Date(lastDate);
+        fetchStartDate.setDate(fetchStartDate.getDate() + 1); // Start from next day
+      } else {
+        // No cache, fetch full range
+        if (range === '5y') fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 5);
+        else if (range === '2y') fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 2);
+        else if (range === '1y') fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 1);
+        else fetchStartDate.setMonth(fetchStartDate.getMonth() - 6);
       }
 
-      // 2. Fetch from Yahoo if Cache Miss
-      console.log(`[Yahoo] Fetching ${symbol}...`);
+      // 2. Fetch from Yahoo (Incremental or Full)
+      console.log(`[Yahoo] Fetching ${symbol} from ${fetchStartDate.toISOString().split('T')[0]}...`);
       
       const endDate = new Date();
-      let startDate = new Date();
-      
-      if (range === '1y') startDate.setFullYear(endDate.getFullYear() - 1);
-      else if (range === '2y') startDate.setFullYear(endDate.getFullYear() - 2);
-      else if (range === '5y') startDate.setFullYear(endDate.getFullYear() - 5);
-      else startDate.setMonth(endDate.getMonth() - 6); 
-
       let result: any[] = [];
+      
       try {
-        // Use yf.chart as it is more robust for NSE/BSE symbols
-        const chartResult = await yf.chart(symbol, {
-          period1: startDate,
+        // WRAPPED IN LIMITER
+        // Switch to historical as primary for better reliability
+        console.log(`[Yahoo] Requesting historical data for ${symbol}...`);
+        const historicalResult = await yahooLimiter.add(() => yf.historical(symbol, {
+          period1: fetchStartDate,
           period2: endDate,
           interval: interval as any
-        }) as any;
+        })) as Array<any>;
 
-        if (chartResult && chartResult.quotes && chartResult.quotes.length > 0) {
-          result = chartResult.quotes
-            .filter((q: any) => q.date && q.open !== null && q.high !== null && q.low !== null && q.close !== null)
-            .map((q: any) => ({
-              date: q.date,
-              open: q.open,
-              high: q.high,
-              low: q.low,
-              close: q.close,
-              volume: q.volume || 0
-            }));
-        } else {
-          throw new Error("No data in chart response");
-        }
-      } catch (chartError: any) {
-        console.warn(`[Yahoo] Chart fetch failed for ${symbol}, trying historical fallback...`, chartError.message);
-        // Fallback to historical
-        const historicalResult = await yf.historical(symbol, {
-          period1: startDate,
-          period2: endDate,
-          interval: interval as any
-        }) as Array<any>;
-        
         if (historicalResult && historicalResult.length > 0) {
           result = historicalResult;
         } else {
-          throw chartError; // Re-throw original error if fallback also fails
+           // Fallback to chart if historical fails
+           console.log(`[Yahoo] Historical empty, trying chart for ${symbol}...`);
+           const chartResult = await yahooLimiter.add(() => yf.chart(symbol, {
+             period1: fetchStartDate,
+             period2: endDate,
+             interval: interval as any
+           })) as any;
+           
+           if (chartResult && chartResult.quotes && chartResult.quotes.length > 0) {
+             result = chartResult.quotes
+               .filter((q: any) => q.date && q.open !== null && q.high !== null && q.low !== null && q.close !== null)
+               .map((q: any) => ({
+                 date: q.date,
+                 open: q.open,
+                 high: q.high,
+                 low: q.low,
+                 close: q.close,
+                 volume: q.volume || 0
+               }));
+           }
         }
+        
+        if (result.length === 0) {
+           throw new Error("No data returned from both historical and chart endpoints");
+        }
+
+      } catch (error: any) {
+        console.warn(`[Yahoo] Fetch failed for ${symbol}: ${error.message}`);
+        
+        // FALLBACK: If fetch fails but we have cache, RETURN CACHE
+        if (cachedData && cachedData.length > 0) {
+           console.log(`[Fallback] Returning stale cache for ${symbol}`);
+           res.json(cachedData);
+           return;
+        }
+        
+        throw error;
       }
 
       // Map to our Candle format
-      const candles = result.map(quote => ({
+      const newCandles = result.map(quote => ({
         date: new Date(quote.date).toISOString().split('T')[0],
         open: quote.open,
         high: quote.high,
@@ -246,19 +332,19 @@ async function startServer() {
         volume: quote.volume || 0
       }));
 
-      // 3. Save to Cache (Background)
-      if (interval === '1d' && candles.length > 0) {
-        saveCandles(symbol, candles);
-        console.log(`[Cache] Saved ${candles.length} candles for ${symbol}`);
+      // 3. Save to Cache
+      if (newCandles.length > 0) {
+        saveCandles(symbol, newCandles);
+        console.log(`[Cache] Saved ${newCandles.length} new candles for ${symbol}`);
       }
+      
+      // Return combined data (Old Cache + New Data)
+      const finalData = getCachedCandles(symbol, 365); // Re-read from DB to get sorted, unique list
+      res.json(finalData || newCandles);
 
-      res.json(candles);
     } catch (error: any) {
       console.error(`[Yahoo] Error details for ${symbol}:`, error.message || error);
-      if (error.errors) {
-        console.error(`[Yahoo] Validation errors:`, JSON.stringify(error.errors, null, 2));
-      }
-      res.status(500).json({ error: "Failed to fetch data from Yahoo Finance", details: error.message });
+      res.status(500).json({ error: "Failed to fetch data", details: error.message });
     }
   });
 
