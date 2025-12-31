@@ -45,7 +45,7 @@ export function Tournament() {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<StrategyPerformance[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_50');
+  const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_100');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'totalPnL', direction: 'desc' });
   
   const requestSort = (key: string) => {

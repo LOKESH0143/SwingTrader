@@ -22,7 +22,7 @@ export function PortfolioSimulator() {
     useMarketRegimeFilter: true,
     useDynamicRisk: true,
     selectedStrategies: PREBUILT_STRATEGIES.map(s => s.id),
-    universe: 'NIFTY_50' as StockUniverse,
+    universe: 'NIFTY_100' as StockUniverse,
     startDate: '',
     endDate: '',
     dataPeriod: '1y' as '1y' | '2y' | '5y',

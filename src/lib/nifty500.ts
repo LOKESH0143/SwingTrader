@@ -12,7 +12,7 @@ export const NIFTY_500_SYMBOLS = [
   "SHRIRAMFIN.NS", "TRENT.NS", "BEL.NS", "INDIGO.NS", "MAXHEALTH.NS", // New Entrants
 
   // --- Nifty Next 50 (The Contenders) ---
-  "ZOMATO.NS", "JIOFIN.NS", "HAL.NS", "VBL.NS", "DLF.NS", // Major Missing Giants Added
+  "ETERNAL.NS", "JIOFIN.NS", "HAL.NS", "VBL.NS", "DLF.NS", // Major Missing Giants Added
   "SIEMENS.NS", "ABB.NS", "PIDILITIND.NS", "LICI.NS", "ADANIPOWER.NS",
   "IOC.NS", "GAIL.NS", "BANKBARODA.NS", "PNB.NS", "CANBK.NS",
   "IRFC.NS", "PFC.NS", "RECLTD.NS", "TVSMOTOR.NS", "CHOLAFIN.NS",

@@ -3,22 +3,53 @@ import { createServer as createViteServer } from "vite";
 import yahooFinance from 'yahoo-finance2';
 import { getCachedCandles, saveCandles, getLastCandleDate } from './src/lib/db';
 import { NIFTY_500_SYMBOLS } from './src/lib/nifty500';
+import { ShoonyaService } from './src/lib/shoonya';
 import http from 'http';
 import fs from 'fs/promises';
 import path from 'path';
+import Database from 'better-sqlite3';
 
 const JOURNAL_FILE = './data/journal.json';
 const SCORES_FILE = './data/scores.json';
+const SHOONYA_CONFIG_FILE = './data/shoonya_config.json';
+const PROXY_URL = 'https://script.google.com/macros/s/AKfycbwd7cYYjtOdp2Fu_esn3hmd-QKmulh_8H0i9R9KiKNjc4e8pHEVPxgW4tstxDiAdHk_/exec';
 
 // Initialize Yahoo Finance instance with custom config
 // This mimics a real browser to bypass bot detection
 const yf = new (yahooFinance as any)({
   httpOptions: {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0'
     }
   }
 });
+
+let shoonya: ShoonyaService | null = null;
+
+// Load Shoonya Config
+async function loadShoonya() {
+  try {
+    const data = await fs.readFile(SHOONYA_CONFIG_FILE, 'utf-8');
+    const config = JSON.parse(data);
+    if (config.userId && config.apiKey) {
+      shoonya = new ShoonyaService(config);
+      console.log('✅ Shoonya Service Initialized');
+    }
+  } catch (e) {
+    console.log('ℹ️ Shoonya config not found. Using Yahoo fallback.');
+  }
+}
+loadShoonya();
 
 // --- SERVER-SIDE RATE LIMITER ---
 class RequestQueue {
@@ -218,6 +249,56 @@ async function startServer() {
   });
   // -------------------
 
+  // --- SHOONYA CONFIG API ---
+  app.post("/api/shoonya/config", async (req, res) => {
+    try {
+      const config = req.body;
+      await fs.writeFile(SHOONYA_CONFIG_FILE, JSON.stringify(config, null, 2));
+      shoonya = new ShoonyaService(config);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to save Shoonya config" });
+    }
+  });
+
+  app.get("/api/shoonya/config", async (req, res) => {
+    try {
+      const data = await fs.readFile(SHOONYA_CONFIG_FILE, 'utf-8');
+      res.json(JSON.parse(data));
+    } catch (e) {
+      res.json({});
+    }
+  });
+
+  app.get("/api/shoonya/test", async (req, res) => {
+    try {
+      if (!shoonya) {
+        return res.json({ success: false, error: "Shoonya not configured" });
+      }
+      await shoonya.login();
+      res.json({ success: true, token: (shoonya as any).token });
+    } catch (e: any) {
+      res.json({ success: false, error: e.message });
+    }
+  });
+
+  // --- CACHE MANAGEMENT ---
+  app.post("/api/cache/clear", (req, res) => {
+    try {
+      // Delete all rows from candles table
+      const dbPath = path.resolve('data/market_data.db');
+      const db = new Database(dbPath);
+      db.exec('DELETE FROM candles');
+      console.log('[Cache] Cleared all data.');
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error('[Cache] Clear failed:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+  // ------------------------
+  // ---------------------------
+
   app.get("/api/history/:symbol", async (req, res) => {
     const { symbol } = req.params;
     const { interval = '1d', range = '1y', force = 'false' } = req.query;
@@ -236,8 +317,8 @@ async function startServer() {
         const now = new Date();
         const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
 
-        // If data is less than 48 hours old (or it's the weekend), use cache
-        if (diffHours < 48) {
+        // If data is less than 4 hours old (or it's the weekend), use cache
+        if (diffHours < 4) {
           console.log(`[Cache] Hit for ${symbol} (Fresh enough)`);
           
           // Filter for requested range
@@ -264,73 +345,133 @@ async function startServer() {
         else fetchStartDate.setMonth(fetchStartDate.getMonth() - 6);
       }
 
-      // 2. Fetch from Yahoo (Incremental or Full)
-      console.log(`[Yahoo] Fetching ${symbol} from ${fetchStartDate.toISOString().split('T')[0]}...`);
+      // 2. Fetch from Source (Shoonya or Yahoo)
+      console.log(`[Fetch] Fetching ${symbol} from ${fetchStartDate.toISOString().split('T')[0]}...`);
       
       const endDate = new Date();
       let result: any[] = [];
+      let usedSource = 'Cache';
+      let lastError = '';
       
       try {
-        // WRAPPED IN LIMITER
-        // Switch to historical as primary for better reliability
-        console.log(`[Yahoo] Requesting historical data for ${symbol}...`);
-        const historicalResult = await yahooLimiter.add(() => yf.historical(symbol, {
-          period1: fetchStartDate,
-          period2: endDate,
-          interval: interval as any
-        })) as Array<any>;
-
-        if (historicalResult && historicalResult.length > 0) {
-          result = historicalResult;
+        if (shoonya) {
+          // --- SHOONYA FETCH ---
+          console.log(`[Shoonya] Fetching ${symbol}...`);
+          usedSource = 'Shoonya (Finvasia)';
+          const daysToFetch = Math.ceil((endDate.getTime() - fetchStartDate.getTime()) / (1000 * 60 * 60 * 24));
+          const shoonyaData = await shoonya.getHistory(symbol, daysToFetch);
+          
+          if (shoonyaData.length > 0) {
+            result = shoonyaData;
+          } else {
+             console.warn(`[Shoonya] Empty result for ${symbol}, falling back to Yahoo.`);
+             lastError = "Shoonya returned empty array";
+             throw new Error("Shoonya returned empty");
+          }
         } else {
-           // Fallback to chart if historical fails
-           console.log(`[Yahoo] Historical empty, trying chart for ${symbol}...`);
-           const chartResult = await yahooLimiter.add(() => yf.chart(symbol, {
-             period1: fetchStartDate,
-             period2: endDate,
-             interval: interval as any
-           })) as any;
-           
-           if (chartResult && chartResult.quotes && chartResult.quotes.length > 0) {
-             result = chartResult.quotes
-               .filter((q: any) => q.date && q.open !== null && q.high !== null && q.low !== null && q.close !== null)
-               .map((q: any) => ({
-                 date: q.date,
-                 open: q.open,
-                 high: q.high,
-                 low: q.low,
-                 close: q.close,
-                 volume: q.volume || 0
-               }));
-           }
+           lastError = "Shoonya not configured";
+           throw new Error("Shoonya not configured");
         }
+      } catch (shoonyaError: any) {
+        // --- YAHOO / PROXY FALLBACK ---
+        if (shoonya) {
+            console.log(`[Fallback] Switching to Yahoo/Proxy for ${symbol}...`);
+            lastError = `Shoonya Error: ${shoonyaError.message}`;
+        }
+        usedSource = 'Google Proxy (Yahoo)';
         
-        if (result.length === 0) {
-           throw new Error("No data returned from both historical and chart endpoints");
-        }
+        try {
+          // USE GOOGLE PROXY
+          console.log(`[Proxy] Fetching ${symbol} via Google Script...`);
+          const proxyRes = await fetch(`${PROXY_URL}?symbol=${symbol}&range=${range}&interval=${interval}`, {
+             redirect: 'follow'
+          });
+          
+          if (!proxyRes.ok) {
+             throw new Error(`Proxy HTTP Error: ${proxyRes.status}`);
+          }
+          
+          const proxyData = await proxyRes.json();
+          
+          // Parse Yahoo Chart Response
+          if (proxyData.chart && proxyData.chart.result && proxyData.chart.result[0]) {
+             const quote = proxyData.chart.result[0];
+             const timestamps = quote.timestamp || [];
+             const quoteData = quote.indicators.quote[0];
+             
+             result = timestamps.map((t: number, i: number) => ({
+                date: new Date(t * 1000).toISOString().split('T')[0],
+                open: quoteData.open[i],
+                high: quoteData.high[i],
+                low: quoteData.low[i],
+                close: quoteData.close[i],
+                volume: quoteData.volume[i] || 0
+             })).filter((c: any) => c.open !== null && c.close !== null); // Filter nulls
+             
+             if (result.length === 0) throw new Error("Proxy returned empty data");
+             
+          } else {
+             throw new Error("Invalid Proxy Response Format");
+          }
 
-      } catch (error: any) {
-        console.warn(`[Yahoo] Fetch failed for ${symbol}: ${error.message}`);
-        
-        // FALLBACK: If fetch fails but we have cache, RETURN CACHE
-        if (cachedData && cachedData.length > 0) {
-           console.log(`[Fallback] Returning stale cache for ${symbol}`);
-           res.json(cachedData);
-           return;
+        } catch (proxyError: any) {
+           console.warn(`[Proxy] Fetch failed: ${proxyError.message}`);
+           lastError = `Proxy Error: ${proxyError.message} (Prev: ${lastError})`;
         }
-        
-        throw error;
+      }
+      
+      if (result.length === 0) {
+         // FINAL FALLBACK: If fetch fails but we have cache, RETURN CACHE
+         if (cachedData && cachedData.length > 0) {
+            console.log(`[Fallback] Returning stale cache for ${symbol}`);
+            res.json(cachedData);
+            return;
+         }
+         
+         // If diagnostics, return specific error
+         if (range === '6m' && symbol === 'RELIANCE.NS') {
+             res.status(500).json({ 
+                 error: "No data returned", 
+                 details: `Shoonya: ${shoonya ? 'Active' : 'Inactive'} | Last Error: ${lastError}` 
+             });
+             return;
+         }
+         
+         throw new Error("No data returned from any source");
       }
 
-      // Map to our Candle format
-      const newCandles = result.map(quote => ({
-        date: new Date(quote.date).toISOString().split('T')[0],
-        open: quote.open,
-        high: quote.high,
-        low: quote.low,
-        close: quote.close,
-        volume: quote.volume || 0
-      }));
+      // Map to our Candle format (Shoonya already mapped, Yahoo needs mapping if using raw)
+      // But wait, ShoonyaService.getHistory returns Candle[], Yahoo returns raw.
+      // We need to normalize.
+      
+      let newCandles: any[] = [];
+      
+      if (result[0].date && typeof result[0].open === 'number') {
+          // Already Candle format (Shoonya or pre-mapped Yahoo)
+          // Wait, Yahoo code above maps it.
+          // Let's fix the Yahoo block to return Candle[] directly or raw.
+          // Actually, let's just ensure result is Candle[]
+          
+          // If it came from Yahoo raw (historicalResult), it needs mapping.
+          if (!result[0].hasOwnProperty('open')) { 
+             // It's raw Yahoo
+             newCandles = result.map((quote: any) => ({
+                date: new Date(quote.date).toISOString().split('T')[0],
+                open: quote.open,
+                high: quote.high,
+                low: quote.low,
+                close: quote.close,
+                volume: quote.volume || 0
+              }));
+          } else {
+             // It's already mapped (Shoonya or Yahoo chart map)
+             // Ensure date format is YYYY-MM-DD
+             newCandles = result.map((c: any) => ({
+                 ...c,
+                 date: new Date(c.date).toISOString().split('T')[0]
+             }));
+          }
+      }
 
       // 3. Save to Cache
       if (newCandles.length > 0) {
@@ -338,9 +479,19 @@ async function startServer() {
         console.log(`[Cache] Saved ${newCandles.length} new candles for ${symbol}`);
       }
       
-      // Return combined data (Old Cache + New Data)
-      const finalData = getCachedCandles(symbol, 365); // Re-read from DB to get sorted, unique list
-      res.json(finalData || newCandles);
+      // Return combined data
+      const finalData = getCachedCandles(symbol, 365) || newCandles;
+      
+      // If this is a diagnostics check, include metadata
+      if (range === '6m' && symbol === 'RELIANCE.NS') {
+         res.json({
+           source: usedSource,
+           data: finalData
+         });
+         return;
+      }
+      
+      res.json(finalData);
 
     } catch (error: any) {
       console.error(`[Yahoo] Error details for ${symbol}:`, error.message || error);

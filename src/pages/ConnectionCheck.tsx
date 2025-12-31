@@ -23,9 +23,17 @@ export function ConnectionCheck() {
       const end = performance.now();
       setLatency(Math.round(end - start));
 
-      if (data && data.length > 0) {
+      // Handle metadata response
+      let candles = data;
+      let source = 'Unknown';
+      if (!Array.isArray(data) && (data as any).data) {
+        candles = (data as any).data;
+        source = (data as any).source;
+      }
+
+      if (candles && candles.length > 0) {
         setStatus('success');
-        setDetails(`Successfully fetched ${data.length} candles. Last date: ${data[data.length-1].date}`);
+        setDetails(`Source: ${source} | Fetched ${candles.length} candles. Last: ${candles[candles.length-1].date}`);
       } else {
         setStatus('error');
         setDetails('API returned empty data array.');
@@ -34,6 +42,12 @@ export function ConnectionCheck() {
       const end = performance.now();
       setLatency(Math.round(end - start));
       setStatus('error');
+      
+      // Try to parse detailed error from response if available
+      // The fetchHistory function throws an error, but we need to see if we can extract details
+      // Actually, fetchHistory in api.ts catches the error and returns [] or throws.
+      // We need to update api.ts to throw the actual error object with details.
+      
       setDetails(e.message || 'Unknown network error');
     }
   };

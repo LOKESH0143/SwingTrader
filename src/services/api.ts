@@ -5,14 +5,20 @@ export async function fetchHistory(symbol: string, range: '6m' | '1y' | '2y' | '
     const response = await fetch(`/api/history/${symbol}?range=${range}&force=${forceRefresh}`);
     if (!response.ok) {
       const errorText = await response.text();
-      console.warn(`[API] Error fetching ${symbol}:`, response.status, errorText);
+      let errorDetails = errorText;
+      try {
+        const json = JSON.parse(errorText);
+        if (json.details) errorDetails = json.details;
+      } catch (e) {}
+
+      console.warn(`[API] Error fetching ${symbol}:`, response.status, errorDetails);
       
       // Dispatch Error Event
       window.dispatchEvent(new CustomEvent('api-status-change', { 
         detail: { status: 'error', message: `API Error: ${response.status}` } 
       }));
       
-      return []; // Return empty array on error
+      throw new Error(errorDetails);
     }
     
     // Dispatch Success Event
