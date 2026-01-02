@@ -530,12 +530,13 @@ if (isUptrend && isBounce) {
 return null;
     `
   },
+
   {
-    id: 'stoch-dip-buyer',
-    name: 'Stochastic Dip Buyer (Trend Filter + Green Candle)',
-    description: 'Buys oversold dips ONLY in a long-term uptrend (Above SMA 200). Avoids catching falling knives.',
+    id: 'stoch-dip-buyer-v2',
+    name: 'Stochastic Dip Buyer (v2 - Dynamic Target)',
+    description: 'Improved version with dynamic profit target based on 50-period SMA for mean reversion.',
     category: 'Mean Reversion',
-    parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05 },
+    parameters: { kPeriod: 14, dPeriod: 3, oversold: 20, defaultRiskPct: 0.05, targetSmaPeriod: 50 },
     opinionCode: `
       const { k, d } = indicators.stochastic(data, 14, 3, 3);
       const currK = k[k.length-1];
@@ -544,9 +545,10 @@ return null;
       return 0;
     `,
     code: `
-// Stochastic Dip Buyer (Trend Filter + Green Candle)
+// Stochastic Dip Buyer v2 (Dynamic Target)
 const { k, d } = indicators.stochastic(data, params.kPeriod, 3, params.dPeriod);
-const sma200 = indicators.sma(data, 200); // The Long-Term Trend Line
+const sma200 = indicators.sma(data, 200); // Long-Term Trend
+const smaTarget = indicators.sma(data, params.targetSmaPeriod); // Dynamic Target SMA
 
 const i = data.length - 1;
 const currK = k[i];
@@ -559,25 +561,20 @@ const currentOpen = data[i].open;
 const currentTrend = sma200[sma200.length - 1];
 
 // 1. Oversold Condition (The Dip)
-// We look for deep value (< 20 or 25)
 const isOversold = prevK < params.oversold && prevD < params.oversold;
 
 // 2. Crossover Condition (The Trigger)
 const isCrossover = prevK < prevD && currK > currD;
 
 // 3. Trend Filter (The Safety Net)
-// We ONLY buy dips if the long-term trend is UP.
 const isUptrend = currentClose > currentTrend;
 
 // 4. Confirmation (Green Candle)
-// We want to see actual buyers on the day of the crossover.
-// Avoid buying if the crossover happened on a red "doji" or weak candle.
 const isGreen = currentClose > currentOpen;
 
 if (isOversold && isCrossover && isUptrend && isGreen) {
 
   // Stop Loss: Recent Low
-  // Since we are buying a dip, the "Low" of the dip is our invalidation point.
   const lowOfDip = Math.min(data[i].low, data[i-1].low, data[i-2].low);
   let stopLoss = lowOfDip;
   
@@ -586,17 +583,20 @@ if (isOversold && isCrossover && isUptrend && isGreen) {
      stopLoss = currentClose * 0.97; // 3% wiggle room
   }
 
-  // Target: The Mean (Reversion)
-  // In mean reversion, price usually snaps back to the 50 SMA or previous High.
-  // We set a standard 3R target to let winners run.
+  // --- DYNAMIC TARGET LOGIC ---
+  let target = smaTarget[i];
   const risk = currentClose - stopLoss;
-  let target = currentClose + (risk * 3);
+
+  // Fallback: If SMA target is not valid or too close, use 2R
+  if (!target || target <= currentClose || (target - currentClose) < (risk * 1.5)) {
+    target = currentClose + (risk * 2);
+  }
 
   return {
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`Stochastic Dip in Uptrend: K/D Cross > SMA 200\`
+    reason: \`Stoch Dip v2 (Dyn. Target): K/D Cross > SMA 200. Tgt @ SMA\${params.targetSmaPeriod}\`
   };
 }
 return null;
@@ -660,11 +660,11 @@ return null;
     `
   },
   {
-    id: 'inside-bar-nr7',
-    name: 'Inside Bar / NR7 (Smart Trend)',
-    description: 'Buys when price breaks out of a volatility contraction pattern (Inside Bar or NR7), aligned with trend and volume.',
+    id: 'inside-bar-nr7-v2',
+    name: 'Inside Bar / NR7 (v2 - High Vol)',
+    description: 'A version of the Inside Bar / NR7 strategy that requires a stronger volume confirmation (1.5x average volume).',
     category: 'Volatility',
-    parameters: { defaultRiskPct: 0.03, trendSma: 50, minRsi: 50 },
+    parameters: { defaultRiskPct: 0.03, trendSma: 50, minRsi: 50, volumeMultiplier: 1.5 },
     opinionCode: `
       const smaTrend = indicators.sma(data, 50);
       const curr = data[data.length-1].close;
@@ -674,7 +674,7 @@ return null;
       return 0;
     `,
     code: `
-// Inside Bar / NR7 Strategy with Trend & Volume
+// Inside Bar / NR7 Strategy with Trend & High Volume
 const current = data[data.length - 1];
 const prev = data[data.length - 2];
 const prev2 = data[data.length - 3];
@@ -709,16 +709,16 @@ const isUptrend = current.close > currentTrend;
 // 5. Momentum Filter: RSI > 50 (Not weak)
 const isMomentum = currentRsi > params.minRsi;
 
-// 6. Volume Filter: Volume > Avg Vol (20)
+// 6. Volume Filter: Volume > 1.5x Avg Vol (20)
 const recentVols = data.slice(-21, -1).map(c => c.volume);
 const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
-const isHighVol = current.volume > avgVol;
+const isHighVol = current.volume > (avgVol * params.volumeMultiplier);
 
 if ((isInsideBar || isNR7) && isBreakout && isUptrend && isMomentum && isHighVol) {
   // Find Support & Resistance
   const { supports, resistances } = indicators.findSupportResistance(data, 10);
 
-  // Stop Loss: Low of the setup bar (prev) or Nearest Support
+  // Stop Loss: Low of the setup bar (prev)
   let stopLoss = prev.low; 
   
   // Target: 2x Risk (Volatility breakouts tend to run)
@@ -735,7 +735,7 @@ if ((isInsideBar || isNR7) && isBreakout && isUptrend && isMomentum && isHighVol
     signal: 'BUY',
     stopLoss: stopLoss,
     target: target,
-    reason: \`Smart Volatility Breakout: \${isInsideBar ? 'Inside Bar' : ''} \${isNR7 ? 'NR7' : ''} + Trend + Vol\`
+    reason: \`V2 Vol Breakout: \${isInsideBar ? 'Inside Bar' : ''} \${isNR7 ? 'NR7' : ''} + Vol: \${(current.volume/avgVol).toFixed(1)}x\`
   };
 }
 return null;

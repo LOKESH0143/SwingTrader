@@ -9,7 +9,7 @@
     "recentWinRate": 0,
     "recentTrades": 2,
     "recentHoldDays": 31,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "rsi-pullback": {
@@ -22,7 +22,7 @@
     "recentWinRate": 100,
     "recentTrades": 1,
     "recentHoldDays": 5,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "vp-trend": {
@@ -61,7 +61,7 @@
     "recentWinRate": 10,
     "recentTrades": 10,
     "recentHoldDays": 8.7,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "institutional-breakout": {
@@ -74,7 +74,7 @@
     "recentWinRate": 24.637681159420293,
     "recentTrades": 69,
     "recentHoldDays": 14.91304347826087,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "macd-standard": {
@@ -87,7 +87,7 @@
     "recentWinRate": 14.285714285714285,
     "recentTrades": 14,
     "recentHoldDays": 28.357142857142858,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "bb-squeeze": {
@@ -100,7 +100,7 @@
     "recentWinRate": 30.158730158730158,
     "recentTrades": 126,
     "recentHoldDays": 21.063492063492063,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "bb-trend-rider": {
@@ -113,7 +113,7 @@
     "recentWinRate": 25.735294117647058,
     "recentTrades": 136,
     "recentHoldDays": 12.948529411764707,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "stoch-dip-buyer": {
@@ -126,7 +126,7 @@
     "recentWinRate": 25.82781456953642,
     "recentTrades": 151,
     "recentHoldDays": 21.794701986754966,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "stoch-oversold": {
@@ -139,7 +139,7 @@
     "recentWinRate": 19.21182266009852,
     "recentTrades": 203,
     "recentHoldDays": 12.334975369458128,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "inside-bar-nr7": {
@@ -152,7 +152,7 @@
     "recentWinRate": 32.432432432432435,
     "recentTrades": 74,
     "recentHoldDays": 12.554054054054054,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "gap-and-go": {
@@ -165,7 +165,7 @@
     "recentWinRate": 60.71428571428571,
     "recentTrades": 28,
     "recentHoldDays": 5.928571428571429,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "ttm-squeeze": {
@@ -178,7 +178,7 @@
     "recentWinRate": 23.52941176470588,
     "recentTrades": 85,
     "recentHoldDays": 12.611764705882353,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "smc-liquidity-sweep": {
@@ -191,7 +191,7 @@
     "recentWinRate": 0,
     "recentTrades": 0,
     "recentHoldDays": 0,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "candle-engulfing": {
@@ -204,7 +204,7 @@
     "recentWinRate": 32.82051282051282,
     "recentTrades": 195,
     "recentHoldDays": 7.4512820512820515,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "candle-hammer": {
@@ -217,7 +217,7 @@
     "recentWinRate": 17.857142857142858,
     "recentTrades": 28,
     "recentHoldDays": 8.678571428571429,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "fib-golden-zone": {
@@ -230,7 +230,7 @@
     "recentWinRate": 21.73913043478261,
     "recentTrades": 69,
     "recentHoldDays": 18.17391304347826,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   },
   "vp-trend-v3-robust": {
@@ -243,7 +243,7 @@
     "recentWinRate": 30,
     "recentTrades": 50,
     "recentHoldDays": 21.58,
-    "lastUpdatedRecent": "2026-01-02T15:37:31.279Z",
+    "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
     "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
   }
 }
