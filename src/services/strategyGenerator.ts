@@ -1,7 +1,16 @@
 import { GoogleGenAI } from "@google/genai";
 import { Strategy } from "../lib/types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  // This is a developer-facing error, so logging to console is appropriate.
+  // The user will see a generic failure message from the calling function.
+  console.error("GEMINI_API_KEY environment variable not set. Please create a .env file and add your key.");
+  // We don't throw an error here to prevent crashing the entire app if this module is loaded
+  // but the generator feature isn't used. Instead, the function that uses `ai` will fail.
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || "" });
 
 const SYSTEM_PROMPT = `
 You are an expert TypeScript Trading Strategy Developer. Your goal is to convert a natural language description of a trading strategy into executable TypeScript code that fits a specific backtesting engine.
