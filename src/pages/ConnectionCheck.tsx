@@ -53,7 +53,7 @@ export function ConnectionCheck() {
   };
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
+    <div className="p-6 max-w-[98%] mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Connection Diagnostics</h1>
         <p className="text-slate-600 mt-2">Test your connectivity to the Yahoo Finance API via the backend server.</p>

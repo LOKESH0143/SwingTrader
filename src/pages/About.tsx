@@ -3,7 +3,7 @@ import { Book, Server, Code, Database, Activity, Layers, ShieldCheck, Cpu, Termi
 
 export function About() {
   return (
-    <div className="p-8 max-w-6xl mx-auto pb-20">
+    <div className="p-6 max-w-[98%] mx-auto pb-20">
       <div className="mb-12 border-b border-slate-200 pb-8">
         <h1 className="text-4xl font-bold text-slate-900 mb-4">SwingTrade Architect Documentation</h1>
         <p className="text-xl text-slate-600 max-w-3xl">

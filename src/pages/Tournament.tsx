@@ -8,7 +8,7 @@ import { runBacktest, TradeFilters } from '../lib/backtest';
 import { cn } from '../lib/utils';
 import { TradeChart } from '../components/TradeChart';
 import { Candle, StrategyScore } from '../lib/types';
-import { updateStrategyScore, getStrategyScores } from '../lib/scores';
+import { updateStrategyScore, getStrategyScores, getTournamentResults, saveTournamentResults, bulkUpdateStrategyScores } from '../lib/scores';
 
 interface TradeDetails {
   symbol: string;
@@ -36,7 +36,7 @@ interface StrategyPerformance {
 }
 
 
-import { analyzeTournamentResults, StrategyAnalysisInput } from '../services/ai';
+import { calculateArchitectScoreV2 } from '../lib/analysis';
 import { Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -44,6 +44,7 @@ export function Tournament() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<StrategyPerformance[]>([]);
+  const [loadingResults, setLoadingResults] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse>('NIFTY_100');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'totalPnL', direction: 'desc' });
@@ -87,27 +88,8 @@ export function Tournament() {
           aValue = a.totalTrades;
           bValue = b.totalTrades;
         } else if (sortConfig.key === 'architectScore') {
-          const sA = scores[a.strategyId];
-          const sB = scores[b.strategyId];
-          
-          const calcScore = (s: StrategyScore | undefined) => {
-            if (!s) return -Infinity;
-            const avgMonthly = s.avgPnL / 60;
-            const recentMonthly = s.recentPnL / 6;
-            const avgYield = s.avgPnL / (s.avgTrades || 1);
-            const recentYield = s.recentPnL / (s.recentTrades || 1);
-            const avgHold = s.avgHoldDays || 1;
-            const recentHold = s.recentHoldDays || 1;
-            
-            const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
-            const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
-            const timeEfficiency = (recentHold * 0.6) + (avgHold * 0.4);
-            const velocityScore = yieldScore / Math.max(1, timeEfficiency);
-            return monthlyScore * Math.abs(velocityScore) * 100;
-          };
-          
-          aValue = calcScore(sA);
-          bValue = calcScore(sB);
+          aValue = calculateArchitectScoreV2(scores[a.strategyId]);
+          bValue = calculateArchitectScoreV2(scores[b.strategyId]);
         }
 
         if (aValue === bValue) return 0;
@@ -124,34 +106,43 @@ export function Tournament() {
   }, []);
 
   const loadScores = async () => {
-    const data = await getStrategyScores();
-    setScores(data);
-    
-    // If we don't have active results yet, populate the table with a "Leaderboard" view
-    // based on the saved scores.
-    if (results.length === 0) {
-      const leaderboard = PREBUILT_STRATEGIES.map(s => {
-        const scoreData = data[s.id];
-        return {
-          strategyId: s.id,
-          strategyName: s.name,
-          totalTrades: 0,
-          wins: 0,
-          totalPnL: 0, // Current run PnL is 0 until run
-          bestSymbol: '-',
-          bestSymbolPnL: 0,
-          allTrades: []
-        };
-      });
+    setLoadingResults(true);
+    try {
+      const data = await getStrategyScores();
+      setScores(data);
+      
+      // Load last tournament results
+      const { results: savedResults, executionDetails: savedDetails } = await getTournamentResults();
+      
+      if (savedResults && savedResults.length > 0) {
+        setResults(savedResults);
+        if (savedDetails) setExecutionDetails(savedDetails);
+      } else if (results.length === 0) {
+        // ... (rest of the leaderboard logic)
+        const leaderboard = PREBUILT_STRATEGIES.map(s => {
+          const scoreData = data[s.id];
+          return {
+            strategyId: s.id,
+            strategyName: s.name,
+            totalTrades: 0,
+            wins: 0,
+            totalPnL: 0,
+            bestSymbol: '-',
+            bestSymbolPnL: 0,
+            allTrades: []
+          };
+        });
 
-      // Sort leaderboard by Architect Score if possible
-      leaderboard.sort((a, b) => {
-        const scoreA = data[a.strategyId] ? (data[a.strategyId].recentPnL * 0.6) + (data[a.strategyId].avgPnL * 0.4) : -Infinity;
-        const scoreB = data[b.strategyId] ? (data[b.strategyId].recentPnL * 0.6) + (data[b.strategyId].avgPnL * 0.4) : -Infinity;
-        return scoreB - scoreA;
-      });
+        leaderboard.sort((a, b) => {
+          const scoreA = data[a.strategyId] ? (data[a.strategyId].recentPnL * 0.6) + (data[a.strategyId].avgPnL * 0.4) : -Infinity;
+          const scoreB = data[b.strategyId] ? (data[b.strategyId].recentPnL * 0.6) + (data[b.strategyId].avgPnL * 0.4) : -Infinity;
+          return scoreB - scoreA;
+        });
 
-      setResults(leaderboard);
+        setResults(leaderboard);
+      }
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -337,16 +328,51 @@ export function Tournament() {
       }));
 
       setProgress(((i + chunkSize) / totalSymbols) * 100);
-      setResults(Object.values(stats).sort((a, b) => b.totalPnL - a.totalPnL));
+      const currentResults = Object.values(stats).sort((a, b) => b.totalPnL - a.totalPnL);
+      setResults(currentResults);
     }
+
+    // Save final results to server
+    const finalResults = Object.values(stats).sort((a, b) => b.totalPnL - a.totalPnL);
+    
+    // Prune results for persistence to avoid massive payloads
+    // We keep all summary stats but limit the trade list to the most recent 100 trades per strategy
+    const prunedResults = finalResults.map(res => ({
+      ...res,
+      allTrades: res.allTrades.slice(-100) // Keep only last 100 trades for inspection
+    }));
+
+    try {
+      const payloadString = JSON.stringify({ results: prunedResults, executionDetails: {
+        universeName,
+        symbolCount: totalSymbols,
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate,
+        period: displayPeriod
+      }});
+      console.log(`[Tournament] Saving results. Payload size: ${(payloadString.length / 1024 / 1024).toFixed(2)} MB`);
+      
+      await saveTournamentResults(prunedResults, {
+        universeName,
+        symbolCount: totalSymbols,
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate,
+        period: displayPeriod
+      });
+    } catch (e) {
+      console.error("Failed to save tournament results", e);
+    }
+
+    // Small delay to let the server breathe after a large file write
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Save scores if in override mode
     if (overrideRange) {
       console.log(`[Tournament] Saving scores for mode: ${overrideRange}`);
       const mode = overrideRange === '5y' ? 'avg' : 'recent';
-      for (const res of Object.values(stats)) {
+      
+      const updates = Object.values(stats).map(res => {
         const winRate = res.totalTrades > 0 ? (res.wins / res.totalTrades) * 100 : 0;
-        
         const totalHoldDays = res.allTrades.reduce((sum, t) => {
           if (t.exitDate) {
             const start = new Date(t.entryDate).getTime();
@@ -356,11 +382,24 @@ export function Tournament() {
           return sum;
         }, 0);
         const avgHoldDays = res.totalTrades > 0 ? totalHoldDays / res.totalTrades : 0;
+        
+        return {
+          strategyId: res.strategyId,
+          pnl: res.totalPnL,
+          winRate,
+          trades: res.totalTrades,
+          holdDays: avgHoldDays
+        };
+      });
 
-        await updateStrategyScore(res.strategyId, res.totalPnL, winRate, res.totalTrades, avgHoldDays, mode);
+      try {
+        await bulkUpdateStrategyScores(updates, mode);
+        await loadScores();
+        console.log(`[Tournament] Scores saved and reloaded.`);
+      } catch (e) {
+        console.error("Failed to save strategy scores", e);
+        alert("Failed to save strategy scores. The results might be too large for the current connection.");
       }
-      await loadScores();
-      console.log(`[Tournament] Scores saved and reloaded.`);
     }
 
     setRunning(false);
@@ -368,7 +407,7 @@ export function Tournament() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto relative">
+    <div className="p-6 max-w-[98%] mx-auto relative">
       {/* Trade Inspector Modal */}
       {selectedTrade && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -700,7 +739,13 @@ export function Tournament() {
         </div>
       )}
 
-      {results.length > 0 && (
+      {loadingResults ? (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-slate-200 shadow-sm">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mb-4" />
+          <h3 className="text-xl font-bold text-slate-900">Loading Tournament Results</h3>
+          <p className="text-slate-500 mt-2">Retrieving latest leaderboard and trade history...</p>
+        </div>
+      ) : results.length > 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
@@ -724,9 +769,9 @@ export function Tournament() {
                 </th>
                 <th className="p-6 text-right" title="Score from 5-year data">Avg Score (5Y)</th>
                 <th className="p-6 text-right" title="Score from 6-month data">Recent Score (6M)</th>
-                <th className="p-6 text-right font-semibold text-indigo-600 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors" onClick={() => requestSort('architectScore')} title="Multiplicative score based on consistency and efficiency">
+                <th className="p-6 text-right font-semibold text-indigo-600 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors" onClick={() => requestSort('architectScore')} title="Multi-factor score blending Profitability, Consistency, and Velocity.">
                   <div className="flex items-center justify-end gap-1">
-                    Architect Score
+                    Architect Score v2
                     {sortConfig.key === 'architectScore' ? (
                       sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
                     ) : <ArrowUpDown size={14} className="opacity-30" />}
@@ -786,29 +831,8 @@ export function Tournament() {
                 const avgHoldDays = closedTradesCount > 0 ? totalHoldDays / closedTradesCount : 0;
 
                 const scoreData = scores[res.strategyId];
-                const avgMonthly = scoreData ? scoreData.avgPnL / 60 : 0;
-                const recentMonthly = scoreData ? scoreData.recentPnL / 6 : 0;
-                
-                // Yield per Trade (Interest Rate per Trade)
-                const avgYield = scoreData ? (scoreData.avgPnL / (scoreData.avgTrades || 1)) : 0;
-                const recentYield = scoreData ? (scoreData.recentPnL / (scoreData.recentTrades || 1)) : 0;
-                
-                const monthlyScore = (recentMonthly * 0.6) + (avgMonthly * 0.4);
-                const yieldScore = (recentYield * 0.6) + (avgYield * 0.4);
-                
-                // Time Efficiency (Average Hold Days)
-                const avgHold = scoreData ? (scoreData.avgHoldDays || 1) : 1;
-                const recentHold = scoreData ? (scoreData.recentHoldDays || 1) : 1;
-                const timeEfficiency = (recentHold * 0.6) + (avgHold * 0.4);
-                
-                // Velocity = Yield per Trade / Hold Days
-                const velocityScore = yieldScore / Math.max(1, timeEfficiency);
-                
-                // Final Architect Score: Multiplicative for Compounding Power
-                // We use Math.abs on velocity to preserve the sign of the monthly performance
-                // SCALING FACTOR: 100x to make scores readable (e.g. 0.2 -> 20)
-                const architectScore = scoreData ? (monthlyScore * Math.abs(velocityScore) * 100) : null;
-                
+                const architectScore = calculateArchitectScoreV2(scoreData);
+
                 return (
                   <React.Fragment key={res.strategyId}>
                     <tr 
@@ -973,9 +997,7 @@ export function Tournament() {
             </tbody>
           </table>
         </div>
-      )}
-
-      {!running && results.length === 0 && (
+      ) : !running && results.length === 0 && (
         <div className="text-center py-20 bg-slate-50 rounded-xl border border-dashed border-slate-300">
           <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
             <Trophy className="w-8 h-8 text-slate-400" />

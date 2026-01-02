@@ -15,6 +15,8 @@ export interface PortfolioSettings {
   useTrailingStop: boolean;
   useMarketRegimeFilter: boolean;
   useDynamicRisk: boolean;
+  maxHoldDays: number; // 0 = Disabled
+  universe: string; // Added universe
   startDate?: string;
   endDate?: string;
   dataPeriod?: '1y' | '2y' | '5y';
@@ -152,11 +154,21 @@ export function runPortfolioSimulation(
           trade.highestPrice = candle.high;
           
           // If trailing stop is on, move stop loss up
+          // IMPROVED LOGIC: Only trail if we are in profit by at least 1R (Risk Unit)
           if (settings.useTrailingStop) {
-            const initialRiskPercent = (trade.entryPrice - trade.stopLoss) / trade.entryPrice;
-            const newStopLoss = trade.highestPrice * (1 - initialRiskPercent);
-            if (newStopLoss > trade.stopLoss) {
-              trade.stopLoss = newStopLoss;
+            const riskAmount = trade.entryPrice - trade.stopLoss; // Initial Risk (1R)
+            const currentProfit = trade.highestPrice - trade.entryPrice;
+            
+            // Only activate trailing if we have moved at least 0.5R in favor
+            if (currentProfit > (riskAmount * 0.5)) {
+               const initialRiskPercent = riskAmount / trade.entryPrice;
+               // Trail by the initial risk distance (maintain the gap)
+               // This is a "Chandelier Exit" style trail
+               const newStopLoss = trade.highestPrice - riskAmount;
+               
+               if (newStopLoss > trade.stopLoss) {
+                 trade.stopLoss = newStopLoss;
+               }
             }
           }
         }
@@ -174,6 +186,21 @@ export function runPortfolioSimulation(
         } else if (candle.high >= trade.target) {
           exitPrice = trade.target;
           reason = 'Target Hit';
+        } else if (settings.maxHoldDays > 0) {
+           // Time-Based Exit
+           const entryTime = new Date(trade.entryDate).getTime();
+           const currentTime = new Date(date).getTime();
+           const diffDays = (currentTime - entryTime) / (1000 * 60 * 60 * 24);
+           
+           if (diffDays >= settings.maxHoldDays) {
+              // Only exit if profitable (as per user request)
+              // Or should we exit regardless? User said "returns are positive".
+              const currentPnL = (candle.close - trade.entryPrice) / trade.entryPrice;
+              if (currentPnL > 0) {
+                  exitPrice = candle.close;
+                  reason = `Time Exit (${settings.maxHoldDays} days)`;
+              }
+           }
         }
 
         if (exitPrice > 0) {

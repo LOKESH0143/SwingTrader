@@ -41,7 +41,7 @@ export function StrategyBuilder() {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-6 max-w-[98%] mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
           <Sparkles className="w-8 h-8 text-indigo-600" />

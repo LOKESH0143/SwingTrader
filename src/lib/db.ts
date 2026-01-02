@@ -38,19 +38,18 @@ try {
 }
 
 export function getCachedCandles(symbol: string, days: number): Candle[] | null {
-  // Check if we have ANY data
-  const lastRow = db.prepare('SELECT date FROM candles WHERE symbol = ? ORDER BY date DESC LIMIT 1').get(symbol) as { date: string } | undefined;
-  
-  if (!lastRow) return null;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
 
   const rows = db.prepare(`
     SELECT date, open, high, low, close, volume 
     FROM candles 
-    WHERE symbol = ? 
+    WHERE symbol = ? AND date >= ?
     ORDER BY date ASC
-  `).all(symbol) as Candle[];
+  `).all(symbol, cutoffStr) as Candle[];
 
-  return rows;
+  return rows.length > 0 ? rows : null;
 }
 
 export function getLastCandleDate(symbol: string): string | null {

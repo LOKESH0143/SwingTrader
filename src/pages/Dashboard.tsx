@@ -55,7 +55,7 @@ export function Dashboard() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-6 max-w-[98%] mx-auto">
       <div className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Market Dashboard</h1>

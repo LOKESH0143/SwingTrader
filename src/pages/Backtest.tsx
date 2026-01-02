@@ -40,7 +40,7 @@ export function Backtest() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-6 max-w-[98%] mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Backtest Engine</h1>
         <p className="text-slate-600 mt-2">Test your strategies against historical Nifty 500 data.</p>

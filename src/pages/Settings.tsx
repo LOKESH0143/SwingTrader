@@ -85,7 +85,7 @@ export function Settings() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-6 max-w-[98%] mx-auto">
       <h1 className="text-3xl font-bold text-slate-900 mb-2">Settings</h1>
       <p className="text-slate-600 mb-8">Configure data sources and system preferences.</p>
 

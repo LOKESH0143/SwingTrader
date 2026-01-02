@@ -11,6 +11,7 @@ import Database from 'better-sqlite3';
 
 const JOURNAL_FILE = './data/journal.json';
 const SCORES_FILE = './data/scores.json';
+const TOURNAMENT_RESULTS_FILE = './data/tournament_results.json';
 const SHOONYA_CONFIG_FILE = './data/shoonya_config.json';
 const PROXY_URL = 'https://script.google.com/macros/s/AKfycbwd7cYYjtOdp2Fu_esn3hmd-QKmulh_8H0i9R9KiKNjc4e8pHEVPxgW4tstxDiAdHk_/exec';
 
@@ -105,6 +106,7 @@ class RequestQueue {
 }
 
 const yahooLimiter = new RequestQueue();
+const lastChecked = new Map<string, number>();
 // --------------------------------
 
 async function startServer() {
@@ -113,7 +115,8 @@ async function startServer() {
   const server = http.createServer(app);
 
   // Middleware to parse JSON
-  app.use(express.json());
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
   // Ensure data directory exists
   try {
@@ -227,8 +230,6 @@ async function startServer() {
   });
 
   // --- STRATEGY SCORES API ---
-  const SCORES_FILE = './data/scores.json';
-
   app.get("/api/scores", async (req, res) => {
     try {
       const data = await fs.readFile(SCORES_FILE, 'utf-8');
@@ -240,11 +241,52 @@ async function startServer() {
 
   app.post("/api/scores", async (req, res) => {
     try {
-      const newScores = req.body; // Expecting Record<string, StrategyScore>
+      const newScores = req.body;
       await fs.writeFile(SCORES_FILE, JSON.stringify(newScores, null, 2));
       res.json({ success: true });
     } catch (e) {
+      console.error("[Server] Failed to save scores:", e);
       res.status(500).json({ error: "Failed to save scores" });
+    }
+  });
+
+  // --- TOURNAMENT RESULTS API ---
+  app.get("/api/tournament/results", async (req, res) => {
+    try {
+      const data = await fs.readFile(TOURNAMENT_RESULTS_FILE, 'utf-8');
+      res.setHeader('Content-Type', 'application/json');
+      res.send(data);
+    } catch (e) {
+      res.json({ results: [], executionDetails: null });
+    }
+  });
+
+  app.post("/api/tournament/results", async (req, res) => {
+    try {
+      const { results, executionDetails } = req.body;
+      if (!results) {
+        console.warn("[Server] Received tournament results with no data");
+        return res.status(400).json({ error: "No results provided" });
+      }
+
+      const size = req.headers['content-length'];
+      console.log(`[Server] Saving tournament results. Size: ${size} bytes, Strategies: ${results.length}`);
+      
+      const startTime = Date.now();
+      const jsonData = JSON.stringify({ results, executionDetails });
+      
+      // Atomic write using a temp file
+      const tempFile = `${TOURNAMENT_RESULTS_FILE}.tmp`;
+      await fs.writeFile(tempFile, jsonData);
+      await fs.rename(tempFile, TOURNAMENT_RESULTS_FILE);
+      
+      const duration = Date.now() - startTime;
+      
+      console.log(`[Server] Tournament results saved successfully in ${duration}ms`);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[Server] Failed to save tournament results:", e);
+      res.status(500).json({ error: "Failed to save tournament results", details: e.message });
     }
   });
   // -------------------
@@ -306,39 +348,56 @@ async function startServer() {
 
     try {
       // 1. Check Cache
-      const cachedData = getCachedCandles(symbol, 365);
+      let requiredDays = 365;
+      if (range === '5y') requiredDays = 1825;
+      else if (range === '2y') requiredDays = 730;
+      else if (range === '1y') requiredDays = 365;
+      else requiredDays = 180;
+
+      const cachedData = getCachedCandles(symbol, requiredDays);
       const lastDateStr = getLastCandleDate(symbol);
+      const now = new Date();
+      const lastCheckedTime = lastChecked.get(symbol) || 0;
+      const timeSinceLastCheck = (now.getTime() - lastCheckedTime) / (1000 * 60); // minutes
       
       let shouldFetch = true;
       let fetchStartDate = new Date();
       
       if (!isForce && cachedData && cachedData.length > 0 && lastDateStr) {
         const lastDate = new Date(lastDateStr);
-        const now = new Date();
-        const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
+        const firstDate = new Date(cachedData[0].date);
+        const todayStr = now.toISOString().split('T')[0];
+        
+        let requiredStart = new Date();
+        if (range === '5y') requiredStart.setFullYear(requiredStart.getFullYear() - 5);
+        else if (range === '2y') requiredStart.setFullYear(requiredStart.getFullYear() - 2);
+        else if (range === '1y') requiredStart.setFullYear(requiredStart.getFullYear() - 1);
+        else requiredStart.setMonth(requiredStart.getMonth() - 6);
 
-        // If data is less than 4 hours old (or it's the weekend), use cache
-        if (diffHours < 4) {
-          console.log(`[Cache] Hit for ${symbol} (Fresh enough)`);
-          
-          // Filter for requested range
-          let requiredStart = new Date();
-          if (range === '5y') requiredStart.setFullYear(requiredStart.getFullYear() - 5);
-          else if (range === '2y') requiredStart.setFullYear(requiredStart.getFullYear() - 2);
-          else if (range === '1y') requiredStart.setFullYear(requiredStart.getFullYear() - 1);
-          else requiredStart.setMonth(requiredStart.getMonth() - 6);
-          
-          const filtered = cachedData.filter(c => new Date(c.date).getTime() >= requiredStart.getTime());
-          res.json(filtered);
+        // CACHE HIT CONDITIONS:
+        // 1. We have enough history (first candle is at or before requiredStart)
+        // 2. Data is fresh (last candle is today OR we checked very recently)
+        const hasEnoughHistory = firstDate.getTime() <= requiredStart.getTime() + 86400000; // Allow 1 day buffer
+        const isFresh = lastDateStr === todayStr || timeSinceLastCheck < 30;
+
+        if (isFresh && hasEnoughHistory) {
+          console.log(`[Cache] Hit for ${symbol} (Fresh & Enough History)`);
+          res.json(cachedData);
           return;
         }
         
-        // If we have data but it's old, only fetch the missing part
-        console.log(`[Cache] Stale for ${symbol}. Last: ${lastDateStr}. Fetching update...`);
-        fetchStartDate = new Date(lastDate);
-        fetchStartDate.setDate(fetchStartDate.getDate() + 1); // Start from next day
+        if (!hasEnoughHistory) {
+          console.log(`[Cache] Missing history for ${symbol}. Need from: ${requiredStart.toISOString().split('T')[0]}`);
+          fetchStartDate = requiredStart;
+        } else {
+          // History is fine, but data is stale
+          console.log(`[Cache] Stale for ${symbol}. Last: ${lastDateStr}. Fetching update...`);
+          fetchStartDate = new Date(lastDate);
+          fetchStartDate.setDate(fetchStartDate.getDate() + 1);
+        }
       } else {
-        // No cache, fetch full range
+        // No cache or forced, fetch full range
+        fetchStartDate = new Date();
         if (range === '5y') fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 5);
         else if (range === '2y') fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 2);
         else if (range === '1y') fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 1);
@@ -474,13 +533,14 @@ async function startServer() {
       }
 
       // 3. Save to Cache
+      lastChecked.set(symbol, Date.now());
       if (newCandles.length > 0) {
         saveCandles(symbol, newCandles);
         console.log(`[Cache] Saved ${newCandles.length} new candles for ${symbol}`);
       }
       
       // Return combined data
-      const finalData = getCachedCandles(symbol, 365) || newCandles;
+      const finalData = getCachedCandles(symbol, requiredDays) || newCandles;
       
       // If this is a diagnostics check, include metadata
       if (range === '6m' && symbol === 'RELIANCE.NS') {
