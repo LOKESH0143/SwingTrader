@@ -167,8 +167,6 @@ if (isUptrend && isOversold) {
 return null;
     `
   },
-
-
   {
     id: 'breakout-vol',
     name: 'Volume Breakout (Volume Profile)',
@@ -235,7 +233,6 @@ if (currentClose > maxHigh && currentVol > (avgVol * params.volumeMult) && isAbo
 return null;
     `
   },
-
   {
     id: 'institutional-breakout',
     name: 'Institutional Breakout (50d High + Vol)',
@@ -385,7 +382,6 @@ if (isCrossover && isUptrend && isHealthy && isTrending) {
 return null;
     `
   },
-
   {
     id: 'bb-squeeze',
     name: 'Bollinger Band Squeeze (True Expansion v2)',
@@ -810,7 +806,6 @@ if (isGapUp && isGreen && isUptrend && isNotOverextended) {
 return null;
     `
   },
-
   {
     id: 'ttm-squeeze',
     name: 'TTM Squeeze (Optimized)',
