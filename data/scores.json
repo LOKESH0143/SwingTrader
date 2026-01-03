@@ -10,7 +10,8 @@
     "recentTrades": 2,
     "recentHoldDays": 31,
     "lastUpdatedRecent": "2026-01-02T20:31:35.409Z",
-    "lastUpdatedAvg": "2026-01-02T20:38:23.758Z"
+    "lastUpdatedAvg": "2026-01-02T20:38:23.758Z",
+    "trustScore": 7.695182536821335
   },
   "rsi-pullback": {
     "strategyId": "rsi-pullback",
@@ -23,7 +24,8 @@
     "recentTrades": 1,
     "recentHoldDays": 5,
     "lastUpdatedRecent": "2026-01-02T19:12:25.132Z",
-    "lastUpdatedAvg": "2026-01-02T19:21:00.483Z"
+    "lastUpdatedAvg": "2026-01-02T19:21:00.483Z",
+    "trustScore": 39.203869322885154
   },
   "vp-trend": {
     "strategyId": "vp-trend",
@@ -36,7 +38,8 @@
     "recentTrades": 106,
     "recentHoldDays": 19.650943396226417,
     "lastUpdatedRecent": "2026-01-02T13:32:07.185Z",
-    "lastUpdatedAvg": "2026-01-02T12:54:50.711Z"
+    "lastUpdatedAvg": "2026-01-02T12:54:50.711Z",
+    "trustScore": 26.14649359645417
   },
   "vp-trend-v2": {
     "strategyId": "vp-trend-v2",
@@ -49,7 +52,8 @@
     "recentTrades": 104,
     "recentHoldDays": 19.701923076923077,
     "lastUpdatedRecent": "2026-01-02T13:32:07.185Z",
-    "lastUpdatedAvg": "2026-01-02T12:54:50.711Z"
+    "lastUpdatedAvg": "2026-01-02T12:54:50.711Z",
+    "trustScore": 20.869540486589997
   },
   "breakout-vol": {
     "strategyId": "breakout-vol",
@@ -57,12 +61,15 @@
     "avgWinRate": 31.785714285714285,
     "avgTrades": 280,
     "avgHoldDays": 18.49642857142857,
-    "recentPnL": -0.07559298299632844,
+    "recentPnL": -0.07559298299632888,
     "recentWinRate": 10,
     "recentTrades": 10,
     "recentHoldDays": 8.7,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 17.58246427174325,
+    "recentMaxDrawdown": 0.1257559298299635,
+    "recentProfitFactor": 0
   },
   "institutional-breakout": {
     "strategyId": "institutional-breakout",
@@ -74,8 +81,11 @@
     "recentWinRate": 25.757575757575758,
     "recentTrades": 66,
     "recentHoldDays": 15.303030303030303,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 34.52709207735437,
+    "recentMaxDrawdown": 1.3190412951630575,
+    "recentProfitFactor": 0.19606914074035844
   },
   "macd-standard": {
     "strategyId": "macd-standard",
@@ -88,7 +98,8 @@
     "recentTrades": 14,
     "recentHoldDays": 28.357142857142858,
     "lastUpdatedRecent": "2026-01-02T20:18:27.098Z",
-    "lastUpdatedAvg": "2026-01-02T20:14:04.004Z"
+    "lastUpdatedAvg": "2026-01-02T20:14:04.004Z",
+    "trustScore": 6.814547470534106
   },
   "bb-squeeze": {
     "strategyId": "bb-squeeze",
@@ -96,12 +107,15 @@
     "avgWinRate": 35.32338308457712,
     "avgTrades": 1809,
     "avgHoldDays": 19.813156440022112,
-    "recentPnL": 42.77548867971082,
+    "recentPnL": 42.775488679710804,
     "recentWinRate": 30.57851239669421,
     "recentTrades": 121,
     "recentHoldDays": 20.74380165289256,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 49.73129567608895,
+    "recentMaxDrawdown": 2.6492552281157846,
+    "recentProfitFactor": 0.3391047961006813
   },
   "bb-trend-rider": {
     "strategyId": "bb-trend-rider",
@@ -113,8 +127,11 @@
     "recentWinRate": 25.735294117647058,
     "recentTrades": 136,
     "recentHoldDays": 12.933823529411764,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 44.22379924586508,
+    "recentMaxDrawdown": 2.2570874164860877,
+    "recentProfitFactor": 0.6288109288359189
   },
   "stoch-dip-buyer": {
     "strategyId": "stoch-dip-buyer",
@@ -127,7 +144,8 @@
     "recentTrades": 151,
     "recentHoldDays": 21.794701986754966,
     "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
-    "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
+    "lastUpdatedAvg": "2026-01-02T15:41:47.501Z",
+    "trustScore": 26.051069150550397
   },
   "stoch-oversold": {
     "strategyId": "stoch-oversold",
@@ -135,12 +153,15 @@
     "avgWinRate": 21.580547112462007,
     "avgTrades": 1645,
     "avgHoldDays": 17.060790273556233,
-    "recentPnL": 1.4856435151895369,
+    "recentPnL": 1.4856435151895422,
     "recentWinRate": 19.21182266009852,
     "recentTrades": 203,
     "recentHoldDays": 12.334975369458128,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 38.06650254733953,
+    "recentMaxDrawdown": 2.514988962876289,
+    "recentProfitFactor": 3.294895956552671
   },
   "inside-bar-nr7": {
     "strategyId": "inside-bar-nr7",
@@ -153,7 +174,8 @@
     "recentTrades": 74,
     "recentHoldDays": 12.554054054054054,
     "lastUpdatedRecent": "2026-01-02T16:07:57.681Z",
-    "lastUpdatedAvg": "2026-01-02T15:41:47.501Z"
+    "lastUpdatedAvg": "2026-01-02T15:41:47.501Z",
+    "trustScore": 30.37521214200671
   },
   "gap-and-go": {
     "strategyId": "gap-and-go",
@@ -165,8 +187,11 @@
     "recentWinRate": 62.96296296296296,
     "recentTrades": 27,
     "recentHoldDays": 6.111111111111111,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 48.10781244240819,
+    "recentMaxDrawdown": 0.20011045877676062,
+    "recentProfitFactor": 0.015671033219728042
   },
   "ttm-squeeze": {
     "strategyId": "ttm-squeeze",
@@ -178,8 +203,11 @@
     "recentWinRate": 15.789473684210526,
     "recentTrades": 19,
     "recentHoldDays": 13.578947368421053,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 16.129944751721226,
+    "recentMaxDrawdown": 0.41212127906143337,
+    "recentProfitFactor": 0
   },
   "smc-liquidity-sweep": {
     "strategyId": "smc-liquidity-sweep",
@@ -191,8 +219,11 @@
     "recentWinRate": 0,
     "recentTrades": 0,
     "recentHoldDays": 0,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 13.730052379968638,
+    "recentMaxDrawdown": 0,
+    "recentProfitFactor": 0
   },
   "candle-engulfing": {
     "strategyId": "candle-engulfing",
@@ -205,7 +236,8 @@
     "recentTrades": 194,
     "recentHoldDays": 7.463917525773196,
     "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 20.095681055425192
   },
   "candle-hammer": {
     "strategyId": "candle-hammer",
@@ -213,12 +245,15 @@
     "avgWinRate": 20.454545454545457,
     "avgTrades": 220,
     "avgHoldDays": 11.795454545454545,
-    "recentPnL": 5.239260978499031,
+    "recentPnL": 5.239260978499029,
     "recentWinRate": 17.857142857142858,
     "recentTrades": 28,
     "recentHoldDays": 8.678571428571429,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 19.057220670007467,
+    "recentMaxDrawdown": 0.31029982468402556,
+    "recentProfitFactor": 0.013901477949471351
   },
   "fib-golden-zone": {
     "strategyId": "fib-golden-zone",
@@ -231,7 +266,8 @@
     "recentTrades": 69,
     "recentHoldDays": 18.17391304347826,
     "lastUpdatedRecent": "2026-01-03T08:01:55.883Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 5.410941921910202
   },
   "vp-trend-v3-robust": {
     "strategyId": "vp-trend-v3-robust",
@@ -239,12 +275,15 @@
     "avgWinRate": 35.64154786150713,
     "avgTrades": 491,
     "avgHoldDays": 24.773930753564155,
-    "recentPnL": 19.40653144500039,
+    "recentPnL": 19.406531445000404,
     "recentWinRate": 30.612244897959183,
     "recentTrades": 49,
     "recentHoldDays": 20.612244897959183,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 32.31336693669924,
+    "recentMaxDrawdown": 1.2518164475181441,
+    "recentProfitFactor": 0.05425149781629713
   },
   "stoch-dip-buyer-v2": {
     "strategyId": "stoch-dip-buyer-v2",
@@ -252,12 +291,15 @@
     "avgWinRate": 34.7027972027972,
     "avgTrades": 1144,
     "avgHoldDays": 13.898601398601398,
-    "recentPnL": 55.0256788227354,
+    "recentPnL": 55.02567882273539,
     "recentWinRate": 36.875,
     "recentTrades": 160,
     "recentHoldDays": 16.41875,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 45.643650509753336,
+    "recentMaxDrawdown": 2.811700491543066,
+    "recentProfitFactor": 0.5407331985651215
   },
   "inside-bar-nr7-v2": {
     "strategyId": "inside-bar-nr7-v2",
@@ -269,8 +311,11 @@
     "recentWinRate": 37.142857142857146,
     "recentTrades": 35,
     "recentHoldDays": 14.342857142857143,
-    "lastUpdatedRecent": "2026-01-03T19:43:02.095Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedRecent": "2026-01-03T20:04:53.196Z",
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 33.35950680645359,
+    "recentMaxDrawdown": 0.4530503075024386,
+    "recentProfitFactor": 0.02166389903784983
   },
   "rsi-pullback-v2": {
     "strategyId": "rsi-pullback-v2",
@@ -283,7 +328,8 @@
     "recentTrades": 17,
     "recentHoldDays": 22.352941176470587,
     "lastUpdatedRecent": "2026-01-02T19:59:05.680Z",
-    "lastUpdatedAvg": "2026-01-02T19:54:36.181Z"
+    "lastUpdatedAvg": "2026-01-02T19:54:36.181Z",
+    "trustScore": 16.335758802403767
   },
   "rsi-pullback-v3": {
     "strategyId": "rsi-pullback-v3",
@@ -295,7 +341,8 @@
     "recentWinRate": 0,
     "recentTrades": 0,
     "recentHoldDays": 0,
-    "lastUpdatedAvg": "2026-01-02T20:14:04.004Z"
+    "lastUpdatedAvg": "2026-01-02T20:14:04.004Z",
+    "trustScore": 9.799973115319844
   },
   "macd-v3-breakout": {
     "strategyId": "macd-v3-breakout",
@@ -308,7 +355,8 @@
     "recentTrades": 10,
     "recentHoldDays": 19.7,
     "lastUpdatedRecent": "2026-01-02T20:24:32.768Z",
-    "lastUpdatedAvg": "2026-01-02T20:29:14.226Z"
+    "lastUpdatedAvg": "2026-01-02T20:29:14.226Z",
+    "trustScore": 19.693326958154564
   },
   "macd-v4-volume-confirmed": {
     "strategyId": "macd-v4-volume-confirmed",
@@ -321,7 +369,8 @@
     "recentTrades": 7,
     "recentHoldDays": 21.714285714285715,
     "lastUpdatedRecent": "2026-01-02T20:31:35.409Z",
-    "lastUpdatedAvg": "2026-01-02T20:38:23.758Z"
+    "lastUpdatedAvg": "2026-01-02T20:38:23.758Z",
+    "trustScore": 17.562571766428302
   },
   "smc-liquidity-sweep-v2": {
     "strategyId": "smc-liquidity-sweep-v2",
@@ -334,7 +383,8 @@
     "recentTrades": 0,
     "recentHoldDays": 0,
     "lastUpdatedRecent": "2026-01-03T06:09:25.685Z",
-    "lastUpdatedAvg": "2026-01-03T06:42:53.036Z"
+    "lastUpdatedAvg": "2026-01-03T06:42:53.036Z",
+    "trustScore": 12.705870729285579
   },
   "fib-golden-zone-v2": {
     "strategyId": "fib-golden-zone-v2",
@@ -347,7 +397,8 @@
     "recentTrades": 16,
     "recentHoldDays": 21.875,
     "lastUpdatedRecent": "2026-01-03T08:01:55.883Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 22.74762745258464
   },
   "fib-golden-zone-v3": {
     "strategyId": "fib-golden-zone-v3",
@@ -360,7 +411,8 @@
     "recentTrades": 98,
     "recentHoldDays": 16.102040816326532,
     "lastUpdatedRecent": "2026-01-03T08:01:55.883Z",
-    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
+    "lastUpdatedAvg": "2026-01-03T08:11:17.267Z",
+    "trustScore": 15.991419786611992
   },
   "candle-engulfing-v2": {
     "strategyId": "candle-engulfing-v2",
@@ -372,7 +424,8 @@
     "recentWinRate": 28.57142857142857,
     "recentTrades": 21,
     "recentHoldDays": 9.142857142857142,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z"
+    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "trustScore": 14.199912370823707
   },
   "candle-engulfing-v3": {
     "strategyId": "candle-engulfing-v3",
@@ -384,6 +437,7 @@
     "recentWinRate": 0,
     "recentTrades": 2,
     "recentHoldDays": 29,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z"
+    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "trustScore": 7.454175802759684
   }
 }

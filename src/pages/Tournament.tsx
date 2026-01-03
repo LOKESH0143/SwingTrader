@@ -7,8 +7,10 @@ import { fetchHistory } from '../services/api';
 import { runBacktest, TradeFilters } from '../lib/backtest';
 import { cn } from '../lib/utils';
 import { TradeChart } from '../components/TradeChart';
-import { Candle, StrategyScore } from '../lib/types';
-import { updateStrategyScore, getStrategyScores, getTournamentResults, saveTournamentResults, bulkUpdateStrategyScores } from '../lib/scores';
+import { Candle, StrategyScore, BacktestMetrics } from '../lib/types';
+import { getStrategyScores, getTournamentResults, saveTournamentResults, bulkUpdateStrategyScores, saveStrategyScores } from '../lib/scores';
+import { StrategyAnalysisInput, analyzeTournamentResults } from '../services/ai';
+
 
 interface TradeDetails {
   symbol: string;
@@ -33,10 +35,11 @@ interface StrategyPerformance {
   bestSymbol: string;
   bestSymbolPnL: number;
   allTrades: TradeDetails[];
+  metrics: BacktestMetrics;
 }
 
 
-import { calculateArchitectScoreV2 } from '../lib/analysis';
+import { calculateArchitectScoreV3 } from '../lib/analysis';
 import { Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -88,8 +91,8 @@ export function Tournament() {
           aValue = a.totalTrades;
           bValue = b.totalTrades;
         } else if (sortConfig.key === 'architectScore') {
-          aValue = calculateArchitectScoreV2(scores[a.strategyId]);
-          bValue = calculateArchitectScoreV2(scores[b.strategyId]);
+          aValue = calculateArchitectScoreV3(scores[a.strategyId]);
+          bValue = calculateArchitectScoreV3(scores[b.strategyId]);
         }
 
         if (aValue === bValue) return 0;
@@ -109,6 +112,11 @@ export function Tournament() {
     setLoadingResults(true);
     try {
       const data = await getStrategyScores();
+      // Calculate and save trust score
+      Object.values(data).forEach(s => {
+        s.trustScore = calculateArchitectScoreV3(s);
+      });
+      await saveStrategyScores(data);
       setScores(data);
       
       // Load last tournament results
@@ -129,13 +137,14 @@ export function Tournament() {
             totalPnL: 0,
             bestSymbol: '-',
             bestSymbolPnL: 0,
-            allTrades: []
+            allTrades: [],
+            metrics: { totalTrades: 0, winRate: 0, netProfit: 0, maxDrawdown: 0, profitFactor: 0 }
           };
         });
 
         leaderboard.sort((a, b) => {
-          const scoreA = data[a.strategyId] ? (data[a.strategyId].recentPnL * 0.6) + (data[a.strategyId].avgPnL * 0.4) : -Infinity;
-          const scoreB = data[b.strategyId] ? (data[b.strategyId].recentPnL * 0.6) + (data[b.strategyId].avgPnL * 0.4) : -Infinity;
+          const scoreA = data[a.strategyId] ? calculateArchitectScoreV3(data[a.strategyId]) : -Infinity;
+          const scoreB = data[b.strategyId] ? calculateArchitectScoreV3(data[b.strategyId]) : -Infinity;
           return scoreB - scoreA;
         });
 
@@ -273,7 +282,8 @@ export function Tournament() {
         totalPnL: 0,
         bestSymbol: '-',
         bestSymbolPnL: -Infinity,
-        allTrades: []
+        allTrades: [],
+        metrics: { totalTrades: 0, winRate: 0, netProfit: 0, maxDrawdown: 0, profitFactor: 0 }
       };
     });
 
@@ -300,6 +310,9 @@ export function Tournament() {
             
             const symbolPnL = result.trades.reduce((acc, t) => acc + t.pnlPercent, 0);
             sStats.totalPnL += symbolPnL;
+            sStats.metrics.netProfit += result.metrics.netProfit;
+            sStats.metrics.maxDrawdown += result.metrics.maxDrawdown;
+            sStats.metrics.profitFactor += result.metrics.profitFactor;
 
             if (symbolPnL > sStats.bestSymbolPnL) {
               sStats.bestSymbol = symbol;
@@ -382,13 +395,17 @@ export function Tournament() {
           return sum;
         }, 0);
         const avgHoldDays = res.totalTrades > 0 ? totalHoldDays / res.totalTrades : 0;
-        
+        const avgMaxDrawdown = totalSymbols > 0 ? res.metrics.maxDrawdown / totalSymbols : 0;
+        const avgProfitFactor = totalSymbols > 0 ? res.metrics.profitFactor / totalSymbols : 0;
+
         return {
           strategyId: res.strategyId,
           pnl: res.totalPnL,
           winRate,
           trades: res.totalTrades,
-          holdDays: avgHoldDays
+          holdDays: avgHoldDays,
+          maxDrawdown: avgMaxDrawdown,
+          profitFactor: avgProfitFactor
         };
       });
 
@@ -771,7 +788,7 @@ export function Tournament() {
                 <th className="p-6 text-right" title="Score from 6-month data">Recent Score (6M)</th>
                 <th className="p-6 text-right font-semibold text-indigo-600 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors" onClick={() => requestSort('architectScore')} title="Multi-factor score blending Profitability, Consistency, and Velocity.">
                   <div className="flex items-center justify-end gap-1">
-                    Architect Score v2
+                    Architect Score v3
                     {sortConfig.key === 'architectScore' ? (
                       sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
                     ) : <ArrowUpDown size={14} className="opacity-30" />}
@@ -831,7 +848,7 @@ export function Tournament() {
                 const avgHoldDays = closedTradesCount > 0 ? totalHoldDays / closedTradesCount : 0;
 
                 const scoreData = scores[res.strategyId];
-                const architectScore = calculateArchitectScoreV2(scoreData);
+                const architectScore = calculateArchitectScoreV3(scoreData);
 
                 return (
                   <React.Fragment key={res.strategyId}>

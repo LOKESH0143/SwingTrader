@@ -7,7 +7,7 @@ import { PortfolioState } from '../lib/portfolioBacktest';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 import { useSimulation } from '../context/SimulationContext';
-import { calculateArchitectScoreV2 } from '../lib/analysis';
+import { calculateArchitectScoreV3 } from '../lib/analysis';
 
 export function PortfolioSimulator() {
   const { running, progress, results, settings, updateSettings, runSimulation } = useSimulation();
@@ -27,7 +27,7 @@ export function PortfolioSimulator() {
     
     const rated = PREBUILT_STRATEGIES.map(s => {
       const scoreData = scores[s.id];
-      const score = calculateArchitectScoreV2(scoreData);
+      const score = calculateArchitectScoreV3(scoreData);
       return { ...s, score };
     });
 

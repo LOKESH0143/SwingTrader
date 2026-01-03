@@ -78,6 +78,8 @@ export async function bulkUpdateStrategyScores(
     winRate: number;
     trades: number;
     holdDays: number;
+    maxDrawdown: number;
+    profitFactor: number;
   }[],
   mode: 'avg' | 'recent'
 ) {
@@ -92,10 +94,15 @@ export async function bulkUpdateStrategyScores(
         avgWinRate: 0,
         avgTrades: 0,
         avgHoldDays: 0,
+        avgMaxDrawdown: 0,
+        avgProfitFactor: 0,
         recentPnL: 0,
         recentWinRate: 0,
         recentTrades: 0,
-        recentHoldDays: 0
+        recentHoldDays: 0,
+        recentMaxDrawdown: 0,
+        recentProfitFactor: 0,
+        trustScore: 0,
       };
 
       if (mode === 'avg') {
@@ -103,12 +110,16 @@ export async function bulkUpdateStrategyScores(
         current.avgWinRate = update.winRate;
         current.avgTrades = update.trades;
         current.avgHoldDays = update.holdDays;
+        current.avgMaxDrawdown = update.maxDrawdown;
+        current.avgProfitFactor = update.profitFactor;
         current.lastUpdatedAvg = now;
       } else {
         current.recentPnL = update.pnl;
         current.recentWinRate = update.winRate;
         current.recentTrades = update.trades;
         current.recentHoldDays = update.holdDays;
+        current.recentMaxDrawdown = update.maxDrawdown;
+        current.recentProfitFactor = update.profitFactor;
         current.lastUpdatedRecent = now;
       }
       scores[update.strategyId] = current;

@@ -1,17 +1,11 @@
-import { Strategy, Candle, Signal, IndicatorFn } from './types';
+import { Strategy, Candle, Signal, IndicatorFn, BacktestMetrics } from './types';
 import * as indicators from './indicators';
 
 interface BacktestResult {
   strategyId: string;
   symbol: string;
   trades: Trade[];
-  metrics: {
-    totalTrades: number;
-    winRate: number;
-    netProfit: number;
-    maxDrawdown: number;
-    profitFactor: number;
-  };
+  metrics: BacktestMetrics;
 }
 
 interface Trade {
@@ -248,6 +242,31 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
   const closedTrades = trades.filter(t => t.status === 'CLOSED');
   const wins = closedTrades.filter(t => t.pnl > 0).length;
   const totalPnl = closedTrades.reduce((acc, t) => acc + t.pnl, 0);
+
+  // Advanced Metrics
+  let grossProfit = 0;
+  let grossLoss = 0;
+  closedTrades.forEach(t => {
+    if (t.pnl > 0) grossProfit += t.pnl;
+    else grossLoss += t.pnl;
+  });
+  const profitFactor = grossLoss !== 0 ? Math.abs(grossProfit / grossLoss) : 0;
+
+  // Calculate Max Drawdown from equity curve
+  let peakEquity = 10000;
+  let maxDrawdown = 0;
+  const equityCurve = [10000];
+  closedTrades.forEach(t => {
+    const newEquity = equityCurve[equityCurve.length - 1] + t.pnl;
+    equityCurve.push(newEquity);
+    if (newEquity > peakEquity) {
+      peakEquity = newEquity;
+    }
+    const drawdown = ((peakEquity - newEquity) / peakEquity) * 100;
+    if (drawdown > maxDrawdown) {
+      maxDrawdown = drawdown;
+    }
+  });
   
   return {
     strategyId: strategy.id,
@@ -257,8 +276,8 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
       totalTrades: closedTrades.length,
       winRate: closedTrades.length > 0 ? (wins / closedTrades.length) * 100 : 0,
       netProfit: totalPnl,
-      maxDrawdown: 0, 
-      profitFactor: 0 
+      maxDrawdown: maxDrawdown, 
+      profitFactor: profitFactor
     }
   };
 }

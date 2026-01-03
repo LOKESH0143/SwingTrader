@@ -54,16 +54,30 @@ export interface JournalTrade {
   direction: 'LONG' | 'SHORT';
 }
 
+export interface BacktestMetrics {
+  totalTrades: number;
+  winRate: number;
+  netProfit: number;
+  maxDrawdown: number;
+  profitFactor: number;
+  // Future metrics can be added here
+}
+
 export interface StrategyScore {
   strategyId: string;
   avgPnL: number;
   avgWinRate: number;
   avgTrades?: number;
   avgHoldDays?: number;
+  avgMaxDrawdown?: number;
+  avgProfitFactor?: number;
   recentPnL: number;
   recentWinRate: number;
   recentTrades?: number;
   recentHoldDays?: number;
+  recentMaxDrawdown?: number;
+  recentProfitFactor?: number;
   lastUpdatedAvg?: string;
   lastUpdatedRecent?: string;
+  trustScore?: number;
 }
