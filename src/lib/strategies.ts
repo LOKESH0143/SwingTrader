@@ -743,50 +743,6 @@ return null;
     `
   },
   {
-    id: 'candle-engulfing',
-    name: 'Bullish Engulfing (Reversal)',
-    description: 'Buys when a large green candle completely engulfs the previous red candle. Strong reversal signal.',
-    category: 'Reversal',
-    parameters: { defaultRiskPct: 0.03 },
-    opinionCode: `
-      const curr = data[data.length-1];
-      const prev = data[data.length-2];
-      if (indicators.isBullishEngulfing(curr, prev)) return 1;
-      return 0;
-    `,
-    code: `
-// Bullish Engulfing Strategy
-const current = data[data.length - 1];
-const prev = data[data.length - 2];
-
-// 1. Pattern Check
-const isEngulfing = indicators.isBullishEngulfing(current, prev);
-
-// 2. Context: Should be in a short-term downtrend or pullback
-// Check if Close is below SMA 20 (Pullback)
-const sma20 = indicators.sma(data, 20);
-const currSma = sma20[sma20.length - 1];
-const isPullback = current.close < currSma;
-
-if (isEngulfing && isPullback) {
-  // Stop Loss: Low of the engulfing candle
-  const stopLoss = current.low;
-  
-  // Target: 2x Risk
-  const risk = current.close - stopLoss;
-  let target = current.close + (risk * 2);
-
-  return {
-    signal: 'BUY',
-    stopLoss: stopLoss,
-    target: target,
-    reason: 'Bullish Engulfing Pattern in Pullback'
-  };
-}
-return null;
-    `
-  },
-  {
     id: 'candle-hammer',
     name: 'Hammer at Support',
     description: 'Buys when a Hammer candle forms near a key support level. Classic "buy the dip" setup.',
@@ -831,85 +787,6 @@ if (isHammer) {
       target: target,
       reason: \`Hammer Candle at Support (\${nearestSupport.toFixed(2)})\`
     };
-  }
-}
-return null;
-    `
-  },
-  {
-    id: 'fib-golden-zone',
-    name: 'Fibonacci Golden Zone (Pullback)',
-    description: 'Buys when price retraces to the 50%-61.8% zone in an uptrend and bounces. High probability setup.',
-    category: 'Mean Reversion',
-    parameters: { lookback: 50, defaultRiskPct: 0.05 },
-    code: `
-// Fibonacci Golden Zone Strategy
-const i = data.length - 1;
-const current = data[i];
-const sma200 = indicators.sma(data, 200);
-const currentTrend = sma200[sma200.length - 1];
-
-// 1. Trend Filter: Must be in long-term uptrend
-if (current.close < currentTrend) return null;
-
-// 2. Find Swing High and Swing Low (Anchors)
-// We look back 'params.lookback' periods to find the highest high
-const lookback = params.lookback;
-let highestHigh = -Infinity;
-let highIndex = -1;
-
-for (let j = 0; j < lookback; j++) {
-  if (data[i - j].high > highestHigh) {
-    highestHigh = data[i - j].high;
-    highIndex = i - j;
-  }
-}
-
-// Now find the lowest low BEFORE that high (within reasonable range)
-let lowestLow = Infinity;
-for (let j = highIndex; j >= Math.max(0, highIndex - lookback); j--) {
-  if (data[j].low < lowestLow) {
-    lowestLow = data[j].low;
-  }
-}
-
-// 3. Calculate Fib Levels
-const range = highestHigh - lowestLow;
-const fib50 = highestHigh - (range * 0.5);
-const fib618 = highestHigh - (range * 0.618);
-const fib786 = highestHigh - (range * 0.786);
-
-// 4. The "Golden Zone" Condition
-// Price must be inside or just touched the 50% - 61.8% zone
-// And we need a bounce (Green Candle)
-const inZone = current.low <= fib50 && current.close >= fib618; 
-const isGreen = current.close > current.open;
-
-if (inZone && isGreen) {
-  
-  // 5. Confluence: RSI not overbought (room to run)
-  const rsi = indicators.rsi(data, 14);
-  const currentRsi = rsi[rsi.length - 1];
-  
-  if (currentRsi < 55) {
-     // Stop Loss: Below the 78.6% level (Invalidation)
-     const stopLoss = fib786;
-     
-     // Target: The Swing High (0% Retracement)
-     const target = highestHigh;
-     
-     // Ensure Risk:Reward is decent (> 1.5)
-     const risk = current.close - stopLoss;
-     const reward = target - current.close;
-     
-     if (reward / risk > 1.5) {
-        return {
-          signal: 'BUY',
-          stopLoss: stopLoss,
-          target: target,
-          reason: \`Fib Golden Zone: Bounce off \${fib618.toFixed(2)} (61.8%). Target: Highs\`
-        };
-     }
   }
 }
 return null;
