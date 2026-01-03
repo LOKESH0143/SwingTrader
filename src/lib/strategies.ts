@@ -11,6 +11,7 @@ import { institutionalBreakout } from './strategies/institutional-breakout';
 import { smcLiquiditySweep } from './strategies/smc-liquidity-sweep';
 import { stochDipBuyer_v2 } from './strategies/stoch-dip-buyer-v2';
 import { stochOversold } from './strategies/stoch-oversold';
+import { stochOversoldV2 } from './strategies/stoch-oversold-v2';
 import { ttmSqueeze } from './strategies/ttm-squeeze';
 import { vpTrendV3Robust } from './strategies/vp-trend-v3-robust';
 
@@ -47,7 +48,7 @@ export const PREBUILT_STRATEGIES: Strategy[] = [
   institutionalBreakout,
   smcLiquiditySweep,
   stochDipBuyer_v2,
-  stochOversold,
+  stochOversoldV2,
   ttmSqueeze,
   vpTrendV3Robust,
 ];
