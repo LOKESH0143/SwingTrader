@@ -61,7 +61,7 @@
     "recentWinRate": 10,
     "recentTrades": 10,
     "recentHoldDays": 8.7,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "institutional-breakout": {
@@ -70,11 +70,11 @@
     "avgWinRate": 27.955665024630544,
     "avgTrades": 812,
     "avgHoldDays": 19.83374384236453,
-    "recentPnL": 27.363337615441814,
+    "recentPnL": 27.3633376154418,
     "recentWinRate": 25.757575757575758,
     "recentTrades": 66,
     "recentHoldDays": 15.303030303030303,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "macd-standard": {
@@ -100,7 +100,7 @@
     "recentWinRate": 30.57851239669421,
     "recentTrades": 121,
     "recentHoldDays": 20.74380165289256,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "bb-trend-rider": {
@@ -109,11 +109,11 @@
     "avgWinRate": 32.849604221635886,
     "avgTrades": 1516,
     "avgHoldDays": 16.649076517150394,
-    "recentPnL": 27.212871064519064,
+    "recentPnL": 27.21287106451907,
     "recentWinRate": 25.735294117647058,
     "recentTrades": 136,
     "recentHoldDays": 12.933823529411764,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "stoch-dip-buyer": {
@@ -135,11 +135,11 @@
     "avgWinRate": 21.580547112462007,
     "avgTrades": 1645,
     "avgHoldDays": 17.060790273556233,
-    "recentPnL": 1.4856435151895315,
+    "recentPnL": 1.4856435151895298,
     "recentWinRate": 19.21182266009852,
     "recentTrades": 203,
     "recentHoldDays": 12.334975369458128,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "inside-bar-nr7": {
@@ -161,11 +161,11 @@
     "avgWinRate": 42.73318872017354,
     "avgTrades": 461,
     "avgHoldDays": 6.1214750542299345,
-    "recentPnL": 42.87364522062527,
+    "recentPnL": 42.87364522062528,
     "recentWinRate": 62.96296296296296,
     "recentTrades": 27,
     "recentHoldDays": 6.111111111111111,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "ttm-squeeze": {
@@ -174,11 +174,11 @@
     "avgWinRate": 31.269035532994927,
     "avgTrades": 985,
     "avgHoldDays": 14.397969543147209,
-    "recentPnL": -22.55873845945575,
+    "recentPnL": -22.558738459455725,
     "recentWinRate": 22.61904761904762,
     "recentTrades": 84,
     "recentHoldDays": 12.738095238095237,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "smc-liquidity-sweep": {
@@ -191,7 +191,7 @@
     "recentWinRate": 0,
     "recentTrades": 0,
     "recentHoldDays": 0,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "candle-engulfing": {
@@ -213,11 +213,11 @@
     "avgWinRate": 20.454545454545457,
     "avgTrades": 220,
     "avgHoldDays": 11.795454545454545,
-    "recentPnL": 5.239260978499029,
+    "recentPnL": 5.239260978499031,
     "recentWinRate": 17.857142857142858,
     "recentTrades": 28,
     "recentHoldDays": 8.678571428571429,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "fib-golden-zone": {
@@ -243,7 +243,7 @@
     "recentWinRate": 30.612244897959183,
     "recentTrades": 49,
     "recentHoldDays": 20.612244897959183,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "stoch-dip-buyer-v2": {
@@ -252,11 +252,11 @@
     "avgWinRate": 34.7027972027972,
     "avgTrades": 1144,
     "avgHoldDays": 13.898601398601398,
-    "recentPnL": 55.0256788227354,
+    "recentPnL": 55.025678822735415,
     "recentWinRate": 36.875,
     "recentTrades": 160,
     "recentHoldDays": 16.41875,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "inside-bar-nr7-v2": {
@@ -269,7 +269,7 @@
     "recentWinRate": 37.142857142857146,
     "recentTrades": 35,
     "recentHoldDays": 14.342857142857143,
-    "lastUpdatedRecent": "2026-01-03T15:06:16.028Z",
+    "lastUpdatedRecent": "2026-01-03T19:17:58.602Z",
     "lastUpdatedAvg": "2026-01-03T08:11:17.267Z"
   },
   "rsi-pullback-v2": {
