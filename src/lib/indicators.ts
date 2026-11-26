@@ -2,6 +2,8 @@ import { Candle } from './types';
 
 // Simple Moving Average
 export function sma(data: Candle[], period: number): number[] {
+  if (!data || data.length === 0) return [];
+  if (data.length < period) return data.map(() => NaN);
   const results: number[] = [];
   for (let i = 0; i < data.length; i++) {
     if (i < period - 1) {
@@ -16,6 +18,8 @@ export function sma(data: Candle[], period: number): number[] {
 
 // Exponential Moving Average
 export function ema(data: Candle[], period: number): number[] {
+  if (!data || data.length === 0) return [];
+  if (data.length < period) return data.map(() => NaN);
   const results: number[] = [];
   const k = 2 / (period + 1);
   
@@ -39,6 +43,8 @@ export function ema(data: Candle[], period: number): number[] {
 
 // Relative Strength Index
 export function rsi(data: Candle[], period: number = 14): number[] {
+  if (!data || data.length === 0) return [];
+  if (data.length <= period) return data.map(() => NaN);
   const results: number[] = [];
   const changes = data.map((c, i) => i === 0 ? 0 : c.close - data[i-1].close);
   
@@ -78,19 +84,27 @@ export function rsi(data: Candle[], period: number = 14): number[] {
 
 // MACD
 export function macd(data: Candle[], fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+  if (!data || data.length < slowPeriod) {
+    const empty = (data || []).map(() => NaN);
+    return { macdLine: empty, signalLine: [...empty], histogram: [...empty] };
+  }
   const fastEma = ema(data, fastPeriod);
   const slowEma = ema(data, slowPeriod);
   
   const macdLine = fastEma.map((f, i) => f - slowEma[i]);
   
   // Calculate Signal Line (EMA of MACD Line)
-  // We need to create a dummy Candle array to reuse the EMA function, or implement a simple array EMA
   const signalLine: number[] = [];
   const k = 2 / (signalPeriod + 1);
   
-  // Find first valid MACD value
+  // Find first valid MACD value with array bounds check
   let firstValidIndex = 0;
-  while (isNaN(macdLine[firstValidIndex])) firstValidIndex++;
+  while (firstValidIndex < macdLine.length && isNaN(macdLine[firstValidIndex])) firstValidIndex++;
+
+  if (firstValidIndex + signalPeriod > macdLine.length) {
+    const empty = data.map(() => NaN);
+    return { macdLine, signalLine: empty, histogram: empty };
+  }
   
   // Initialize NaNs
   for (let i = 0; i < firstValidIndex + signalPeriod - 1; i++) {
@@ -120,6 +134,8 @@ export function macd(data: Candle[], fastPeriod = 12, slowPeriod = 26, signalPer
 
 // Standard Deviation
 export function stdDev(data: Candle[], period: number): number[] {
+  if (!data || data.length === 0) return [];
+  if (data.length < period) return data.map(() => NaN);
   const results: number[] = [];
   const smaValues = sma(data, period);
 

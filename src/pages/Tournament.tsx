@@ -395,8 +395,23 @@ export function Tournament() {
           return sum;
         }, 0);
         const avgHoldDays = res.totalTrades > 0 ? totalHoldDays / res.totalTrades : 0;
-        const avgMaxDrawdown = totalSymbols > 0 ? res.metrics.maxDrawdown / totalSymbols : 0;
-        const avgProfitFactor = totalSymbols > 0 ? res.metrics.profitFactor / totalSymbols : 0;
+        
+        // Calculate true aggregate profit factor from all trades
+        const grossProfit = res.allTrades.filter(t => t.pnlPercent > 0).reduce((sum, t) => sum + t.pnlPercent, 0);
+        const grossLoss = Math.abs(res.allTrades.filter(t => t.pnlPercent < 0).reduce((sum, t) => sum + t.pnlPercent, 0));
+        const aggregateProfitFactor = grossLoss > 0 ? parseFloat((grossProfit / grossLoss).toFixed(2)) : (grossProfit > 0 ? 10 : 0);
+
+        // Calculate portfolio max drawdown from chronological equity curve
+        let peakEquity = 100;
+        let currentEquity = 100;
+        let stratMaxDrawdown = 0;
+        const sortedTrades = [...res.allTrades].sort((a, b) => new Date(a.entryDate).getTime() - new Date(b.entryDate).getTime());
+        sortedTrades.forEach(t => {
+          currentEquity += currentEquity * (t.pnlPercent / 100);
+          if (currentEquity > peakEquity) peakEquity = currentEquity;
+          const dd = ((peakEquity - currentEquity) / peakEquity) * 100;
+          if (dd > stratMaxDrawdown) stratMaxDrawdown = dd;
+        });
 
         return {
           strategyId: res.strategyId,
@@ -404,8 +419,8 @@ export function Tournament() {
           winRate,
           trades: res.totalTrades,
           holdDays: avgHoldDays,
-          maxDrawdown: avgMaxDrawdown,
-          profitFactor: avgProfitFactor
+          maxDrawdown: parseFloat(stratMaxDrawdown.toFixed(2)),
+          profitFactor: aggregateProfitFactor
         };
       });
 

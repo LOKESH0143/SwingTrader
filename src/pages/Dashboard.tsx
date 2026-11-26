@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Radar, Target, ArrowUpRight, ArrowDownRight, Zap, Search, AlertTriangle, BookOpen, Check } from 'lucide-react';
+import { Radar, Target, ArrowUpRight, ArrowDownRight, Zap, Search, AlertTriangle, BookOpen, Check, Filter, RefreshCw } from 'lucide-react';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
+import { STOCK_UNIVERSES, StockUniverse } from '../lib/stockUniverses';
 import { PREBUILT_STRATEGIES } from '../lib/strategies';
 import { fetchHistory } from '../services/api';
 import { evaluateStrategy } from '../lib/scanner';
@@ -13,6 +14,15 @@ export function Dashboard() {
   const [progress, setProgress] = useState(0);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [scannedCount, setScannedCount] = useState(0);
+  const [selectedUniverse, setSelectedUniverse] = useState<StockUniverse | 'NIFTY_500'>('NIFTY_50');
+  const [forceRefresh, setForceRefresh] = useState(false);
+
+  const getSymbols = () => {
+    if (selectedUniverse === 'NIFTY_500') return NIFTY_500_SYMBOLS;
+    return STOCK_UNIVERSES[selectedUniverse]?.symbols || NIFTY_500_SYMBOLS.slice(0, 50);
+  };
+
+  const universeSymbols = getSymbols();
 
   const runScan = async () => {
     setScanning(true);
@@ -20,19 +30,19 @@ export function Dashboard() {
     setProgress(0);
     setScannedCount(0);
 
-    const total = NIFTY_500_SYMBOLS.length;
+    const symbolsToScan = getSymbols();
+    const total = symbolsToScan.length;
     const newSignals: Signal[] = [];
 
     // Process in chunks to avoid UI freeze and rate limits
     const chunkSize = 5;
     for (let i = 0; i < total; i += chunkSize) {
-      const chunk = NIFTY_500_SYMBOLS.slice(i, i + chunkSize);
+      const chunk = symbolsToScan.slice(i, i + chunkSize);
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
           // Fetch last 300 days (enough for 200 SMA)
-          // FORCE REFRESH for Live Scan
-          const data = await fetchHistory(symbol, '1y', true); 
+          const data = await fetchHistory(symbol, '1y', forceRefresh); 
           
           // Check ALL strategies
           for (const strategy of PREBUILT_STRATEGIES) {
@@ -56,33 +66,69 @@ export function Dashboard() {
 
   return (
     <div className="p-6 max-w-[98%] mx-auto">
-      <div className="flex justify-between items-end mb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Market Dashboard</h1>
           <p className="text-slate-600 mt-2">Real-time scanner and active signal monitoring.</p>
         </div>
-        <button
-          onClick={runScan}
-          disabled={scanning}
-          className={cn(
-            "flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white shadow-lg transition-all",
-            scanning 
-              ? "bg-slate-400 cursor-not-allowed" 
-              : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
-          )}
-        >
-          {scanning ? (
-            <>
-              <Search className="w-5 h-5 animate-spin" />
-              Scanning ({Math.round(progress)}%)...
-            </>
-          ) : (
-            <>
-              <Radar className="w-5 h-5" />
-              Scan Market
-            </>
-          )}
-        </button>
+        
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm">
+            <Filter className="w-4 h-4 text-slate-500" />
+            <select
+              value={selectedUniverse}
+              onChange={(e) => setSelectedUniverse(e.target.value as any)}
+              disabled={scanning}
+              className="text-sm font-medium text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+            >
+              <option value="NIFTY_50">Nifty 50 (50 stocks)</option>
+              <option value="NIFTY_100">Nifty 100 (100 stocks)</option>
+              <option value="BANKING">Banking & Finance (19 stocks)</option>
+              <option value="IT">IT Sector (8 stocks)</option>
+              <option value="AUTO">Auto Sector (8 stocks)</option>
+              <option value="PHARMA">Pharma (7 stocks)</option>
+              <option value="FMCG">FMCG (11 stocks)</option>
+              <option value="ENERGY">Energy (10 stocks)</option>
+              <option value="METAL">Metals (5 stocks)</option>
+              <option value="INFRA">Infra (15 stocks)</option>
+              <option value="NIFTY_500">Nifty 500 (Full 500)</option>
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-white px-3 py-2.5 rounded-lg border border-slate-200 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={forceRefresh}
+              onChange={(e) => setForceRefresh(e.target.checked)}
+              disabled={scanning}
+              className="rounded text-indigo-600 focus:ring-indigo-500"
+            />
+            <span>Force Live Fetch</span>
+          </label>
+
+          <button
+            onClick={runScan}
+            disabled={scanning}
+            className={cn(
+              "flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium text-white shadow-lg transition-all",
+              scanning 
+                ? "bg-slate-400 cursor-not-allowed" 
+                : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
+            )}
+          >
+            {scanning ? (
+              <>
+                <Search className="w-5 h-5 animate-spin" />
+                Scanning ({Math.round(progress)}%)...
+              </>
+            ) : (
+              <>
+                <Radar className="w-5 h-5" />
+                Scan Universe
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Stats Overview */}
@@ -94,7 +140,7 @@ export function Dashboard() {
             </div>
             <div>
               <p className="text-sm font-medium text-slate-500">Symbols Scanned</p>
-              <h3 className="text-2xl font-bold text-slate-900">{scannedCount} / {NIFTY_500_SYMBOLS.length}</h3>
+              <h3 className="text-2xl font-bold text-slate-900">{scannedCount} / {universeSymbols.length}</h3>
             </div>
           </div>
         </div>

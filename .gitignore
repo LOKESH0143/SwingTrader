@@ -4,8 +4,11 @@ dist/
 coverage/
 .DS_Store
 *.log
+*.tsbuildinfo
 .env*
 !.env.example
-data/tournament_results.json
-data/market_data.json
+data/*.db
+data/*.db-journal
+data/tournament_results.json*
 data/shoonya_config.json
+data/journal.json

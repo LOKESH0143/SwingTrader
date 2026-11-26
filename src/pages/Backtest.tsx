@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Play, Loader2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
-import { PREBUILT_STRATEGIES } from '../lib/strategies';
+import { PREBUILT_STRATEGIES, loadCustomStrategies } from '../lib/strategies';
 import { NIFTY_500_SYMBOLS } from '../lib/nifty500';
 import { fetchHistory } from '../services/api';
 import { runBacktest } from '../lib/backtest';
@@ -8,12 +9,23 @@ import { Strategy } from '../lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export function Backtest() {
-  const [selectedStrategyId, setSelectedStrategyId] = useState(PREBUILT_STRATEGIES[0].id);
+  const [searchParams] = useSearchParams();
+  const allStrategies = [...PREBUILT_STRATEGIES, ...loadCustomStrategies().filter(c => !PREBUILT_STRATEGIES.some(p => p.id === c.id))];
+  const urlStrategy = searchParams.get('strategy');
+  const initialStrategyId = urlStrategy && allStrategies.some(s => s.id === urlStrategy) ? urlStrategy : allStrategies[0]?.id;
+
+  const [selectedStrategyId, setSelectedStrategyId] = useState(initialStrategyId || PREBUILT_STRATEGIES[0].id);
   const [selectedSymbol, setSelectedSymbol] = useState(NIFTY_500_SYMBOLS[0]);
   const [timeRange, setTimeRange] = useState<'6m' | '1y' | '2y' | '5y'>('2y');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (urlStrategy && allStrategies.some(s => s.id === urlStrategy)) {
+      setSelectedStrategyId(urlStrategy);
+    }
+  }, [urlStrategy]);
 
   const handleRunBacktest = async () => {
     setLoading(true);
@@ -25,7 +37,7 @@ export function Backtest() {
       const data = await fetchHistory(selectedSymbol, timeRange);
       
       // 2. Get Strategy
-      const strategy = PREBUILT_STRATEGIES.find(s => s.id === selectedStrategyId);
+      const strategy = allStrategies.find(s => s.id === selectedStrategyId);
       if (!strategy) throw new Error("Strategy not found");
 
       // 3. Run Backtest
@@ -56,7 +68,7 @@ export function Backtest() {
               onChange={(e) => setSelectedStrategyId(e.target.value)}
               className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
-              {PREBUILT_STRATEGIES.map(s => (
+              {allStrategies.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>

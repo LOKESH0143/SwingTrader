@@ -17,8 +17,7 @@ export function ConnectionCheck() {
     try {
       // Fetch just 5 days of data for a highly liquid stock (Reliance)
       // We use '1y' range but the server cache logic might return it instantly if cached.
-      // To force a real check, we could append a timestamp, but let's test the actual flow.
-      const data = await fetchHistory('RELIANCE.NS', '6m');
+      const data = await fetchHistory('RELIANCE.NS', '6m', true, true);
       
       const end = performance.now();
       setLatency(Math.round(end - start));
