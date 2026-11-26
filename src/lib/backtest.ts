@@ -79,10 +79,9 @@ export function runBacktest(strategy: Strategy, data: Candle[], filters?: TradeF
        // Ensure we still respect a minimum warmup if possible
        startIndex = Math.max(foundIndex, 50);
     }
-  } else {
-    // Default Behavior: If NO start date filter is provided, run on ALL available data
-    // starting after a dynamic warmup period.
-    startIndex = Math.min(warmupPeriod, 50);
+    // Default Behavior: If NO start date filter is provided, start after warmup period
+    // If sufficient history exists, use the full 200-candle warmup; otherwise fall back to 50
+    startIndex = data.length > warmupPeriod ? warmupPeriod : Math.min(50, data.length - 1);
   }
 
   // Final check to ensure startIndex is valid and doesn't exceed endIndex

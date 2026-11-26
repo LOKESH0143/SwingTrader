@@ -440,9 +440,16 @@ async function startServer() {
         usedSource = 'Google Proxy (Yahoo)';
         
         try {
+          // Map range: Yahoo Finance expects '6mo', not '6m'
+          const yahooRange = range === '6m' ? '6mo' : (typeof range === 'string' ? range : '1y');
+          
+          // Google Apps Script automatically URL-decodes incoming query parameters.
+          // For symbols with '^' (e.g. ^NSEI), double-encode %255E so UrlFetchApp receives %5E
+          const proxySymbol = symbol.includes('^') ? symbol.replace(/\^/g, '%255E') : encodeURIComponent(symbol);
+
           // USE GOOGLE PROXY
-          console.log(`[Proxy] Fetching ${symbol} via Google Script...`);
-          const proxyRes = await fetch(`${PROXY_URL}?symbol=${symbol}&range=${range}&interval=${interval}`, {
+          console.log(`[Proxy] Fetching ${symbol} via Google Script with range=${yahooRange}...`);
+          const proxyRes = await fetch(`${PROXY_URL}?symbol=${proxySymbol}&range=${yahooRange}&interval=${interval}`, {
              redirect: 'follow'
           });
           
@@ -488,7 +495,7 @@ async function startServer() {
          }
          
          // If diagnostics, return specific error
-         if (range === '6m' && symbol === 'RELIANCE.NS') {
+         if (req.query.diagnostics === 'true' || (range === '6m' && symbol === 'RELIANCE.NS' && req.query.diagnostics === 'true')) {
              res.status(500).json({ 
                  error: "No data returned", 
                  details: `Shoonya: ${shoonya ? 'Active' : 'Inactive'} | Last Error: ${lastError}` 
@@ -541,9 +548,10 @@ async function startServer() {
       
       // Return combined data
       const finalData = getCachedCandles(symbol, requiredDays) || newCandles;
+      res.setHeader('X-Data-Source', usedSource);
       
-      // If this is a diagnostics check, include metadata
-      if (range === '6m' && symbol === 'RELIANCE.NS') {
+      // If this is an explicit diagnostics check, include metadata
+      if (req.query.diagnostics === 'true') {
          res.json({
            source: usedSource,
            data: finalData
