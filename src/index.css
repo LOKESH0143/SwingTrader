@@ -1,1 +1,223 @@
 @import "tailwindcss";
+
+@layer base {
+  :root,
+  [data-theme="dark"] {
+    --bg-canvas: #0b0e14;
+    --bg-surface: #111621;
+    --bg-elevated: #171e2d;
+    --bg-hover: #1d2638;
+    --border-subtle: rgba(148, 163, 184, 0.14);
+    --border-strong: rgba(148, 163, 184, 0.24);
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #0ea5e9;
+    --accent-hover: #0284c7;
+    --accent-soft: rgba(14, 165, 233, 0.14);
+    --bull: #10b981;
+    --bull-soft: rgba(16, 185, 129, 0.14);
+    --bear: #ef4444;
+    --bear-soft: rgba(239, 68, 68, 0.14);
+    --warn: #f59e0b;
+    color-scheme: dark;
+  }
+
+  [data-theme="light"] {
+    --bg-canvas: #f4f6f9;
+    --bg-surface: #ffffff;
+    --bg-elevated: #f8fafc;
+    --bg-hover: #eef2f7;
+    --border-subtle: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --accent-soft: rgba(2, 132, 199, 0.1);
+    --bull: #059669;
+    --bull-soft: rgba(5, 150, 105, 0.1);
+    --bear: #dc2626;
+    --bear-soft: rgba(220, 38, 38, 0.1);
+    --warn: #d97706;
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre,
+  .font-mono,
+  .tabular-nums {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Reusable Terminal Surface Primitives */
+.terminal-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.terminal-panel {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.terminal-input {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  border-radius: 8px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.terminal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.terminal-btn-primary {
+  background-color: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: background-color 150ms ease, transform 100ms ease;
+}
+
+.terminal-btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.terminal-btn-secondary {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  font-weight: 500;
+  border-radius: 8px;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.terminal-btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+/* Unified Dark Terminal Adaptation for Legacy Pages
+   Ensures all views (Tournament, Simulator, Journal, Settings, About) immediately
+   adopt the institutional dark palette without purple/indigo AI-template artifacts. */
+[data-theme="dark"] .terminal-main .bg-white {
+  background-color: var(--bg-surface) !important;
+}
+
+[data-theme="dark"] .terminal-main .bg-slate-50,
+[data-theme="dark"] .terminal-main .bg-slate-100 {
+  background-color: var(--bg-elevated) !important;
+}
+
+[data-theme="dark"] .terminal-main .hover\:bg-slate-50:hover,
+[data-theme="dark"] .terminal-main .hover\:bg-slate-100:hover,
+[data-theme="dark"] .terminal-main .hover\:bg-slate-200:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+[data-theme="dark"] .terminal-main .border-slate-100,
+[data-theme="dark"] .terminal-main .border-slate-200,
+[data-theme="dark"] .terminal-main .border-slate-300 {
+  border-color: var(--border-subtle) !important;
+}
+
+[data-theme="dark"] .terminal-main .text-slate-900,
+[data-theme="dark"] .terminal-main .text-slate-800 {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .terminal-main .text-slate-700,
+[data-theme="dark"] .terminal-main .text-slate-600 {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .terminal-main .text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .terminal-main input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="dark"] .terminal-main select,
+[data-theme="dark"] .terminal-main textarea {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+[data-theme="dark"] .terminal-main select option {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* Replace generic Google AI Studio indigo/violet accents with institutional sky/blue across both themes */
+.terminal-main .bg-indigo-600,
+.terminal-main .from-violet-600 {
+  background-color: var(--accent) !important;
+  background-image: none !important;
+}
+
+.terminal-main .hover\:bg-indigo-700:hover {
+  background-color: var(--accent-hover) !important;
+}
+
+.terminal-main .text-indigo-600,
+.terminal-main .text-indigo-500 {
+  color: var(--accent) !important;
+}
+
+[data-theme="dark"] .terminal-main .bg-indigo-50,
+[data-theme="dark"] .terminal-main .bg-blue-50,
+[data-theme="dark"] .terminal-main .bg-blue-100,
+[data-theme="dark"] .terminal-main .bg-green-100,
+[data-theme="dark"] .terminal-main .bg-emerald-50,
+[data-theme="dark"] .terminal-main .bg-red-50,
+[data-theme="dark"] .terminal-main .bg-amber-50,
+[data-theme="dark"] .terminal-main .bg-orange-100 {
+  background-color: var(--bg-elevated) !important;
+}
+
+[data-theme="dark"] .terminal-main .text-indigo-900,
+[data-theme="dark"] .terminal-main .text-indigo-800,
+[data-theme="dark"] .terminal-main .text-blue-700 {
+  color: #7dd3fc !important;
+}
+
+[data-theme="dark"] .terminal-main .border-indigo-100,
+[data-theme="dark"] .terminal-main .border-indigo-500 {
+  border-color: rgba(14, 165, 233, 0.4) !important;
+}
+
+/* Subtle Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}

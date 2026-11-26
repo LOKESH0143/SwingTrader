@@ -462,7 +462,7 @@ export function Tournament() {
                   <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
                 </div>
               ) : (
-                <TradeChart data={tradeData} trade={selectedTrade} />
+                <TradeChart data={tradeData} symbol={selectedTrade.symbol} trade={selectedTrade} />
               )}
               
               <div className="mt-6 grid grid-cols-4 gap-4 text-sm">

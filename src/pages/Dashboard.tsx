@@ -135,35 +135,35 @@ export function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
+            <div className="p-3 bg-blue-100 text-sky-500 rounded-lg">
               <Search className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500">Symbols Scanned</p>
-              <h3 className="text-2xl font-bold text-slate-900">{scannedCount} / {universeSymbols.length}</h3>
+              <p className="text-xs uppercase tracking-wider font-semibold text-slate-500">Symbols Scanned</p>
+              <h3 className="text-2xl font-bold font-mono text-slate-900">{scannedCount} / {universeSymbols.length}</h3>
             </div>
           </div>
         </div>
         
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-green-100 text-green-600 rounded-lg">
+            <div className="p-3 bg-green-100 text-emerald-500 rounded-lg">
               <Zap className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500">Active Signals</p>
-              <h3 className="text-2xl font-bold text-slate-900">{signals.length}</h3>
+              <p className="text-xs uppercase tracking-wider font-semibold text-slate-500">Active Signals</p>
+              <h3 className="text-2xl font-bold font-mono text-slate-900">{signals.length}</h3>
             </div>
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-purple-100 text-purple-600 rounded-lg">
+            <div className="p-3 bg-amber-50 text-amber-500 rounded-lg">
               <Target className="w-6 h-6" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500">Top Strategy</p>
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wider font-semibold text-slate-500">Top Strategy</p>
               <h3 className="text-lg font-bold text-slate-900 truncate">
                 {signals.length > 0 
                   ? getTopStrategy(signals)
@@ -183,11 +183,11 @@ export function Dashboard() {
         </div>
       ) : (
         <div className="text-center py-20 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-          <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-            <Search className="w-8 h-8 text-slate-400" />
+          <div className="mx-auto w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+            <Search className="w-6 h-6 text-slate-400" />
           </div>
-          <h3 className="text-lg font-medium text-slate-900">No signals found</h3>
-          <p className="text-slate-500 mt-1">Run a scan to find trading opportunities.</p>
+          <h3 className="text-base font-semibold text-slate-900">No active setups scanned yet</h3>
+          <p className="text-sm text-slate-500 mt-1">Select an NSE universe above and click Scan Universe.</p>
         </div>
       )}
     </div>
@@ -198,7 +198,7 @@ const SignalCard: React.FC<{ signal: Signal }> = ({ signal }) => {
   const [added, setAdded] = useState(false);
   const risk = signal.price - signal.stopLoss;
   const reward = signal.target - signal.price;
-  const rrRatio = reward / risk;
+  const rrRatio = risk > 0 ? reward / risk : 0;
 
   const handleAddToJournal = async () => {
     try {
@@ -224,37 +224,37 @@ const SignalCard: React.FC<{ signal: Signal }> = ({ signal }) => {
       <div className="p-5 border-b border-slate-100 flex justify-between items-start">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-xl font-bold text-slate-900">{signal.symbol}</h3>
-            <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded uppercase">
+            <h3 className="text-lg font-bold font-mono text-slate-900">{signal.symbol}</h3>
+            <span className="px-2 py-0.5 bg-green-100 text-emerald-500 text-xs font-mono font-bold rounded uppercase">
               {signal.type}
             </span>
           </div>
           <p className="text-sm text-slate-500 mt-1">{signal.strategyName}</p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-slate-900">₹{signal.price.toFixed(2)}</div>
-          <div className="text-xs text-slate-400">{new Date(signal.date).toLocaleDateString()}</div>
+          <div className="text-xl font-bold font-mono text-slate-900">₹{signal.price.toFixed(2)}</div>
+          <div className="text-xs font-mono text-slate-400">{new Date(signal.date).toLocaleDateString()}</div>
         </div>
       </div>
       
       <div className="p-5 grid grid-cols-3 gap-4">
         <div>
           <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Stop Loss</p>
-          <div className="flex items-center gap-1 text-red-600 font-medium">
+          <div className="flex items-center gap-1 text-red-500 font-mono font-semibold">
             <ArrowDownRight className="w-4 h-4" />
             ₹{signal.stopLoss.toFixed(2)}
           </div>
         </div>
         <div>
           <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Target</p>
-          <div className="flex items-center gap-1 text-green-600 font-medium">
+          <div className="flex items-center gap-1 text-emerald-500 font-mono font-semibold">
             <ArrowUpRight className="w-4 h-4" />
             ₹{signal.target.toFixed(2)}
           </div>
         </div>
         <div>
           <p className="text-xs text-slate-500 uppercase font-semibold mb-1">R:R Ratio</p>
-          <div className="font-medium text-slate-700">
+          <div className="font-mono font-semibold text-slate-700">
             1:{rrRatio.toFixed(1)}
           </div>
         </div>
