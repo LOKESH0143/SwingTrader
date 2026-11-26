@@ -73,7 +73,7 @@ export function Strategies() {
   };
 
   const handleNewStrategy = () => {
-    navigate('/strategy-builder');
+    navigate('/builder');
   };
 
   return (
